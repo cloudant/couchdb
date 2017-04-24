@@ -247,19 +247,18 @@ handle_cast(delete, State) ->
     #st{mod=Mod, idx_state=IdxState} = State,
     ok = Mod:delete(IdxState),
     {stop, normal, State};
-handle_cast(ddoc_updated, State) ->
+handle_cast({ddoc_updated, DDocResult}, State) ->
     #st{mod = Mod, idx_state = IdxState, waiters = Waiters} = State,
-    DbName = Mod:get(db_name, IdxState),
-    DDocId = Mod:get(idx_name, IdxState),
-    Shutdown = couch_util:with_db(DbName, fun(Db) ->
-        case couch_db:open_doc(Db, DDocId, [ejson_body, ?ADMIN_CTX]) of
-            {not_found, deleted} ->
-                true;
-            {ok, DDoc} ->
+    Shutdown = case DDocResult of
+        {not_found, deleted} ->
+            true;
+        {ok, DDoc} ->
+            DbName = Mod:get(db_name, IdxState),
+            couch_util:with_db(DbName, fun(Db) ->
                 {ok, NewIdxState} = Mod:init(Db, DDoc),
                 Mod:get(signature, NewIdxState) =/= Mod:get(signature, IdxState)
-        end
-    end),
+            end)
+    end,
     case Shutdown of
         true ->
             case Waiters of

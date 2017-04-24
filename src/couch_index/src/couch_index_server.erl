@@ -252,14 +252,20 @@ handle_db_event(DbName, deleted, St) ->
     gen_server:cast(?MODULE, {reset_indexes, DbName}),
     {ok, St};
 handle_db_event(DbName, {ddoc_updated, DDocId}, St) ->
-    lists:foreach(fun({_DbName, {_DDocId, Sig}}) ->
-        case ets:lookup(?BY_SIG, {DbName, Sig}) of
-            [{_, IndexPid}] ->
-                (catch gen_server:cast(IndexPid, ddoc_updated));
-            [] ->
-                ok
-        end
-    end, ets:match_object(?BY_DB, {DbName, {DDocId, '$1'}})),
+    DDocResult = couch_util:with_db(DbName, fun(Db) ->
+        couch_db:open_doc(Db, DDocId, [ejson_body, ?ADMIN_CTX])
+    end),
+    DbNames = [mem3:name(Sh) || Sh <- mem3:local_shards(mem3:dbname(DbName))],
+    lists:foreach(
+        fun(DBName) ->
+        lists:foreach(fun({_DBName, {_DDocId, Sig}}) ->
+            case ets:lookup(?BY_SIG, {DBName, Sig}) of
+                [{_, IndexPid}] -> (catch
+                    gen_server:cast(IndexPid, {ddoc_updated, DDocResult}));
+                [] -> []
+            end
+        end, ets:match_object(?BY_DB, {DBName, {DDocId, '$1'}}))
+    end, DbNames),
     {ok, St};
 handle_db_event(_DbName, _Event, St) ->
     {ok, St}.

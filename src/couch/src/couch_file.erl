@@ -15,6 +15,7 @@
 -vsn(2).
 
 -include_lib("couch/include/couch_db.hrl").
+-include_lib("aegis/include/aegis.hrl").
 
 
 -define(INITIAL_WAIT, 60000).
@@ -33,8 +34,13 @@
     is_sys,
     eof = 0,
     db_monitor,
-    pread_limit = 0
+    pread_limit = 0,
+    path,
+    dek
 }).
+
+-define(KEK, aegis:make_kek(<<"dummy">>, <<0:256>>)).
+-define(WEK_LEN, 48).
 
 % public API
 -export([open/1, open/2, close/1, bytes/1, sync/1, truncate/2, set_db_pid/2]).
@@ -139,10 +145,10 @@ append_raw_chunk(Fd, Chunk) ->
 
 
 assemble_file_chunk(Bin) ->
-    [<<0:1/integer, (iolist_size(Bin)):31/integer>>, Bin].
+    {<<0:1/integer, (iolist_size(Bin)):31/integer>>, Bin}.
 
 assemble_file_chunk(Bin, Md5) ->
-    [<<1:1/integer, (iolist_size(Bin)):31/integer>>, Md5, Bin].
+    {<<1:1/integer, (iolist_size(Bin)):31/integer>>, [Md5, Bin]}.
 
 %%----------------------------------------------------------------------
 %% Purpose: Reads a term from a file that was written with append_term
@@ -153,9 +159,12 @@ assemble_file_chunk(Bin, Md5) ->
 
 
 pread_term(Fd, Pos) ->
-    {ok, Bin} = pread_binary(Fd, Pos),
-    {ok, couch_compress:decompress(Bin)}.
-
+    case pread_binary(Fd, Pos) of
+        {ok, Bin} ->
+            {ok, couch_compress:decompress(Bin)};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %%----------------------------------------------------------------------
 %% Purpose: Reads a binrary from a file that was written with append_binary
@@ -165,8 +174,12 @@ pread_term(Fd, Pos) ->
 %%----------------------------------------------------------------------
 
 pread_binary(Fd, Pos) ->
-    {ok, L} = pread_iolist(Fd, Pos),
-    {ok, iolist_to_binary(L)}.
+    case pread_iolist(Fd, Pos) of
+        {ok, L} ->
+            {ok, iolist_to_binary(L)};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 
 pread_iolist(Fd, Pos) ->
@@ -341,6 +354,7 @@ init_status_error(ReturnPid, Ref, Error) ->
 % server functions
 
 init({Filepath, Options, ReturnPid, Ref}) ->
+    FilepathBin = couch_util:to_binary(Filepath),
     OpenOptions = file_open_options(Options),
     Limit = get_pread_limit(),
     IsSys = lists:member(sys_db, Options),
@@ -364,7 +378,7 @@ init({Filepath, Options, ReturnPid, Ref}) ->
                     ok = file:sync(Fd),
                     couch_stats_process_tracker:track([couchdb, open_os_files]),
                     erlang:send_after(?INITIAL_WAIT, self(), maybe_close),
-                    {ok, #file{fd=Fd, is_sys=IsSys, pread_limit=Limit}};
+                    init_crypto(#file{path=FilepathBin, fd=Fd, is_sys=IsSys, pread_limit=Limit});
                 false ->
                     ok = file:close(Fd),
                     init_status_error(ReturnPid, Ref, {error, eexist})
@@ -372,7 +386,7 @@ init({Filepath, Options, ReturnPid, Ref}) ->
             false ->
                 couch_stats_process_tracker:track([couchdb, open_os_files]),
                 erlang:send_after(?INITIAL_WAIT, self(), maybe_close),
-                {ok, #file{fd=Fd, is_sys=IsSys, pread_limit=Limit}}
+                init_crypto(#file{path=FilepathBin, fd=Fd, is_sys=IsSys, pread_limit=Limit})
             end;
         Error ->
             init_status_error(ReturnPid, Ref, Error)
@@ -388,7 +402,7 @@ init({Filepath, Options, ReturnPid, Ref}) ->
             couch_stats_process_tracker:track([couchdb, open_os_files]),
             {ok, Eof} = file:position(Fd, eof),
             erlang:send_after(?INITIAL_WAIT, self(), maybe_close),
-            {ok, #file{fd=Fd, eof=Eof, is_sys=IsSys, pread_limit=Limit}};
+            init_crypto(#file{path=FilepathBin, fd=Fd, eof=Eof, is_sys=IsSys, pread_limit=Limit});
         Error ->
             init_status_error(ReturnPid, Ref, Error)
         end
@@ -417,12 +431,22 @@ handle_call({pread_iolist, Pos}, _From, File) ->
     {LenIolist, NextPos} = read_raw_iolist_int(File, Pos, 4),
     case iolist_to_binary(LenIolist) of
     <<1:1/integer,Len:31/integer>> -> % an MD5-prefixed term
-        {Md5AndIoList, _} = read_raw_iolist_int(File, NextPos, Len+16),
-        {Md5, IoList} = extract_md5(Md5AndIoList),
-        {reply, {ok, IoList, Md5}, File};
+        {Md5AndIoList, _} = read_raw_iolist_int(File, NextPos, Len+32),
+        case aegis:block_decrypt(File#file.dek, Pos, iolist_to_binary(Md5AndIoList)) of
+            error ->
+                {reply, {error, decryption_failed}, File};
+            PlainText ->
+                {Md5, IoList} = extract_md5([PlainText]),
+                {reply, {ok, IoList, Md5}, File}
+        end;
     <<0:1/integer,Len:31/integer>> ->
-        {Iolist, _} = read_raw_iolist_int(File, NextPos, Len),
-        {reply, {ok, Iolist, <<>>}, File}
+        {Iolist, _} = read_raw_iolist_int(File, NextPos, Len+16),
+        case aegis:block_decrypt(File#file.dek, Pos, iolist_to_binary(Iolist)) of
+            error ->
+                {reply, {error, decryption_failed}, File};
+            PlainText ->
+                {reply, {ok, PlainText, <<>>}, File}
+        end
     end;
 
 handle_call(bytes, _From, #file{fd = Fd} = File) ->
@@ -439,17 +463,20 @@ handle_call({set_db_pid, Pid}, _From, #file{db_monitor=OldRef}=File) ->
 handle_call(sync, _From, #file{fd=Fd}=File) ->
     {reply, file:sync(Fd), File};
 
-handle_call({truncate, Pos}, _From, #file{fd=Fd}=File) ->
+handle_call({truncate, Pos0}, _From, #file{fd=Fd}=File) ->
+    Pos = if Pos0 > ?WEK_LEN -> Pos0; true -> 0 end, % if WEK is truncated.
     {ok, Pos} = file:position(Fd, Pos),
     case file:truncate(Fd) of
     ok ->
-        {reply, ok, File#file{eof = Pos}};
+        {ok, File1} = init_crypto(File#file{eof = Pos}),
+        {reply, ok, File1};
     Error ->
         {reply, Error, File}
     end;
 
-handle_call({append_bin, Bin}, _From, #file{fd = Fd, eof = Pos} = File) ->
-    Blocks = make_blocks(Pos rem ?SIZE_BLOCK, Bin),
+handle_call({append_bin, {Hdr, Data}}, _From, #file{fd = Fd, eof = Pos} = File) ->
+    CipherText = aegis:block_encrypt(File#file.dek, Pos, Data),
+    Blocks = make_blocks(Pos rem ?SIZE_BLOCK, [Hdr, CipherText]),
     Size = iolist_size(Blocks),
     case file:write(Fd, Blocks) of
     ok ->
@@ -459,14 +486,15 @@ handle_call({append_bin, Bin}, _From, #file{fd = Fd, eof = Pos} = File) ->
     end;
 
 handle_call({write_header, Bin}, _From, #file{fd = Fd, eof = Pos} = File) ->
-    BinSize = byte_size(Bin),
     case Pos rem ?SIZE_BLOCK of
     0 ->
         Padding = <<>>;
     BlockOffset ->
         Padding = <<0:(8*(?SIZE_BLOCK-BlockOffset))>>
     end,
-    FinalBin = [Padding, <<1, BinSize:32/integer>> | make_blocks(5, [Bin])],
+    CipherText = aegis:block_encrypt(File#file.dek, Pos + byte_size(Padding), Bin),
+    BinSize = byte_size(CipherText),
+    FinalBin = [Padding, <<1, BinSize:32/integer>> | make_blocks(5, [CipherText])],
     case file:write(Fd, FinalBin) of
     ok ->
         {reply, ok, File#file{eof = Pos + iolist_size(FinalBin)}};
@@ -475,7 +503,7 @@ handle_call({write_header, Bin}, _From, #file{fd = Fd, eof = Pos} = File) ->
     end;
 
 handle_call(find_header, _From, #file{fd = Fd, eof = Pos} = File) ->
-    {reply, find_header(Fd, Pos div ?SIZE_BLOCK), File}.
+    {reply, find_header(Fd, File#file.dek, Pos div ?SIZE_BLOCK), File}.
 
 handle_cast(close, Fd) ->
     {stop,normal,Fd}.
@@ -502,25 +530,25 @@ handle_info({'DOWN', Ref, process, _Pid, _Info}, #file{db_monitor=Ref}=File) ->
     end.
 
 
-find_header(Fd, Block) ->
-    case (catch load_header(Fd, Block)) of
+find_header(Fd, DEK, Block) ->
+    case (catch load_header(Fd, DEK, Block)) of
     {ok, Bin} ->
         {ok, Bin};
     _Error ->
         ReadCount = config:get_integer(
             "couchdb", "find_header_read_count", ?DEFAULT_READ_COUNT),
-        find_header(Fd, Block -1, ReadCount)
+        find_header(Fd, DEK, Block -1, ReadCount)
     end.
 
-load_header(Fd, Block) ->
+load_header(Fd, DEK, Block) ->
     {ok, <<1, HeaderLen:32/integer, RestBlock/binary>>} =
         file:pread(Fd, Block * ?SIZE_BLOCK, ?SIZE_BLOCK),
-    load_header(Fd, Block * ?SIZE_BLOCK, HeaderLen, RestBlock).
+    load_header(Fd, DEK, Block * ?SIZE_BLOCK, HeaderLen, RestBlock).
 
-load_header(Fd, Pos, HeaderLen) ->
-    load_header(Fd, Pos, HeaderLen, <<>>).
+load_header(Fd, DEK, Pos, HeaderLen) ->
+    load_header(Fd, DEK, Pos, HeaderLen, <<>>).
 
-load_header(Fd, Pos, HeaderLen, RestBlock) ->
+load_header(Fd, DEK, Pos, HeaderLen, RestBlock) ->
     TotalBytes = calculate_total_read_len(?PREFIX_SIZE, HeaderLen),
     RawBin = case TotalBytes =< byte_size(RestBlock) of
         true ->
@@ -532,18 +560,23 @@ load_header(Fd, Pos, HeaderLen, RestBlock) ->
             {ok, Missing} = file:pread(Fd, ReadStart, ReadLen),
             <<RestBlock/binary, Missing/binary>>
     end,
-    <<Md5Sig:16/binary, HeaderBin/binary>> =
-        iolist_to_binary(remove_block_prefixes(?PREFIX_SIZE, RawBin)),
-    Md5Sig = couch_crypto:hash(md5, HeaderBin),
-    {ok, HeaderBin}.
+    Bin0 = remove_block_prefixes(?PREFIX_SIZE, RawBin),
+    Bin1 = iolist_to_binary(Bin0),
+    case aegis:block_decrypt(DEK, Pos, Bin1) of
+        error ->
+            {error, decryption_failed};
+        <<Md5Sig:16/binary, HeaderBin/binary>> ->
+            Md5Sig = couch_crypto:hash(md5, HeaderBin),
+            {ok, HeaderBin}
+    end.
 
 
 %% Read multiple block locations using a single file:pread/2.
--spec find_header(file:fd(), block_id(), non_neg_integer()) ->
+-spec find_header(file:fd(), dek(), block_id(), non_neg_integer()) ->
     {ok, binary()} | no_valid_header.
-find_header(_Fd, Block, _ReadCount) when Block < 0 ->
+find_header(_Fd, _DEK, Block, _ReadCount) when Block < 0 ->
     no_valid_header;
-find_header(Fd, Block, ReadCount) ->
+find_header(Fd, DEK, Block, ReadCount) ->
     FirstBlock = max(0, Block - ReadCount + 1),
     BlockLocations = [?SIZE_BLOCK*B || B <- lists:seq(FirstBlock, Block)],
     {ok, DataL} = file:pread(Fd, [{L, ?PREFIX_SIZE} || L <- BlockLocations]),
@@ -556,26 +589,26 @@ find_header(Fd, Block, ReadCount) ->
         (_, Acc) ->
             Acc
     end, [], lists:zip(BlockLocations, DataL)),
-    case find_newest_header(Fd, HeaderLocations) of
+    case find_newest_header(Fd, DEK, HeaderLocations) of
         {ok, _Location, HeaderBin} ->
             {ok, HeaderBin};
         _ ->
             ok = file:advise(
                 Fd, hd(BlockLocations), ReadCount * ?SIZE_BLOCK, dont_need),
             NextBlock = hd(BlockLocations) div ?SIZE_BLOCK - 1,
-            find_header(Fd, NextBlock, ReadCount)
+            find_header(Fd, DEK, NextBlock, ReadCount)
     end.
 
--spec find_newest_header(file:fd(), [{location(), header_size()}]) ->
+-spec find_newest_header(file:fd(), dek(), [{location(), header_size()}]) ->
     {ok, location(), binary()} | not_found.
-find_newest_header(_Fd, []) ->
+find_newest_header(_Fd, _DEK, []) ->
     not_found;
-find_newest_header(Fd, [{Location, Size} | LocationSizes]) ->
-    case (catch load_header(Fd, Location, Size)) of
+find_newest_header(Fd, DEK, [{Location, Size} | LocationSizes]) ->
+    case (catch load_header(Fd, DEK, Location, Size)) of
         {ok, HeaderBin} ->
             {ok, Location, HeaderBin};
         _Error ->
-            find_newest_header(Fd, LocationSizes)
+            find_newest_header(Fd, DEK, LocationSizes)
     end.
 
 
@@ -706,6 +739,28 @@ get_pread_limit() ->
 reset_eof(#file{} = File) ->
     {ok, Eof} = file:position(File#file.fd, eof),
     File#file{eof = Eof}.
+
+init_crypto(#file{eof = 0} = File) ->
+    {ok, KEK} = ?KEK, %% get from key protect obviously
+    {ok, DEK} = aegis:make_dek(File#file.path, KEK),
+    {ok, WEK} = aegis:wrap_dek(KEK, DEK),
+    ?WEK_LEN = byte_size(WEK),
+    case file:write(File#file.fd, WEK) of
+        ok ->
+            {ok, File#file{
+                eof = byte_size(WEK),
+                dek = DEK
+            }};
+        {error, Reason} ->
+            {error, Reason}
+    end;
+
+init_crypto(#file{} = File) ->
+    {ok, KEK} = ?KEK, %% get from key protect obviously
+    {ok, WEK} = file:pread(File#file.fd, 0, 48),
+    {ok, DEK} = aegis:unwrap_dek(KEK, File#file.path, WEK),
+    {ok, File#file{dek = DEK}}.
+
 
 -ifdef(TEST).
 -include_lib("couch/include/couch_eunit.hrl").

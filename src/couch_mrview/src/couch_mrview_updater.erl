@@ -192,6 +192,7 @@ map_docs(Parent, #mrst{db_name = DbName, idx_name = IdxName} = State0) ->
                     {erlang:max(Seq, SeqAcc), [{Id, Seq, Rev, []} | Results]};
                 ({Id, Seq, Rev, Doc}, {SeqAcc, Results}) ->
                     couch_stats:increment_counter([couchdb, mrview, map_doc]),
+                    erlang:put(last_id_indexed, Id), % for debugging
                     {ok, Res} = couch_query_servers:map_doc_raw(QServer, Doc),
                     {erlang:max(Seq, SeqAcc), [{Id, Seq, Rev, Res} | Results]}
             end,

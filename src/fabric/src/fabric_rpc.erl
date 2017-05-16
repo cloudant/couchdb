@@ -314,7 +314,9 @@ view_cb({row, Row}, Acc) ->
 view_cb(complete, Acc) ->
     % Finish view output
     ok = rexi:stream_last(complete),
-    {ok, Acc}.
+    {ok, Acc};
+view_cb(ok, ddoc_updated) ->
+    rexi:reply({ok, ddoc_updated}).
 
 
 reduce_cb({meta, Meta}, Acc) ->

@@ -112,9 +112,16 @@ init({Mod, IdxState}) ->
     end.
 
 
-terminate(Reason, State) ->
+terminate(Reason0, State) ->
     #st{mod=Mod, idx_state=IdxState}=State,
-    Mod:close(IdxState),
+    case State#st.shutdown of
+        true ->
+            Mod:shutdown(IdxState),
+            Reason = ddoc_updated;
+        false ->
+            Mod:close(IdxState),
+            Reason = Reason0
+    end,
     send_all(State#st.waiters, Reason),
     couch_util:shutdown_sync(State#st.updater),
     couch_util:shutdown_sync(State#st.compactor),
@@ -261,12 +268,7 @@ handle_cast({ddoc_updated, DDocResult}, State) ->
     end,
     case Shutdown of
         true ->
-            case Waiters of
-                [] ->
-                    {stop, normal, State};
-                _ ->
-                    {noreply, State#st{shutdown = true}}
-            end;
+            {stop, normal, State#st{shutdown = true}};
         false ->
             {noreply, State#st{shutdown = false}}
     end;

@@ -47,21 +47,22 @@ get_view(Db, DDoc, ViewName, Args0) ->
     MinSeq = case Args2#mrargs.update of
         false -> 0; lazy -> 0; _ -> DbUpdateSeq
     end,
-    {ok, State} = case couch_index:get_state(Pid, MinSeq) of
-        {ok, _} = Resp -> Resp;
+    case couch_index:get_state(Pid, MinSeq) of
+        {ok, State} ->
+            Ref = erlang:monitor(process, State#mrst.fd),
+            if Args2#mrargs.update == lazy ->
+                spawn(fun() -> catch couch_index:get_state(Pid, DbUpdateSeq) end);
+                true -> ok
+            end,
+            #mrst{language=Lang, views=Views} = State,
+            {Type, View, Args3} = extract_view(Lang, Args2, ViewName, Views),
+            check_range(Args3, view_cmp(View)),
+            Sig = view_sig(Db, State, View, Args3),
+            {ok, {Type, View, Ref}, Sig, Args3};
+        ddoc_updated ->
+            ddoc_updated;
         Error -> throw(Error)
-    end,
-    Ref = erlang:monitor(process, State#mrst.fd),
-    if Args2#mrargs.update == lazy ->
-        spawn(fun() -> catch couch_index:get_state(Pid, DbUpdateSeq) end);
-        true -> ok
-    end,
-    #mrst{language=Lang, views=Views} = State,
-    {Type, View, Args3} = extract_view(Lang, Args2, ViewName, Views),
-    check_range(Args3, view_cmp(View)),
-    Sig = view_sig(Db, State, View, Args3),
-    {ok, {Type, View, Ref}, Sig, Args3}.
-
+    end.
 
 get_view_index_pid(Db, DDoc, ViewName, Args0) ->
     ArgCheck = fun(InitState) ->

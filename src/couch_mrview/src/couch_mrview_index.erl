@@ -14,7 +14,7 @@
 
 
 -export([get/2]).
--export([init/2, open/2, close/1, reset/1, delete/1]).
+-export([init/2, open/2, close/1, shutdown/1, reset/1, delete/1]).
 -export([start_update/3, purge/4, process_doc/3, finish_update/1, commit/1]).
 -export([compact/3, swap_compacted/2]).
 -export([index_file_exists/1]).
@@ -141,6 +141,13 @@ open(Db, State) ->
 close(State) ->
     erlang:demonitor(State#mrst.fd_monitor, [flush]),
     couch_file:close(State#mrst.fd).
+
+% ddoc_updated -> couch_index procces will be closed.
+% This ensures that couch_file will not be closed
+% until all client's requests have been processed
+shutdown(State) ->
+    erlang:demonitor(State#mrst.fd_monitor, [flush]),
+    unlink(State#mrst.fd).
 
 
 delete(#mrst{db_name=DbName, sig=Sig}=State) ->

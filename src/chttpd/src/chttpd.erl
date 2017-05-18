@@ -226,6 +226,11 @@ handle_request_int(MochiReq) ->
     erlang:put(dont_log_request, true),
     erlang:put(dont_log_response, true),
 
+    case MochiReq:get_header_value("x-couchdb-sleep-time") of
+        undefined -> ok;
+        Duration -> timer:sleep(list_to_integer(Duration))
+    end,
+
     {HttpReq2, Response} = case before_request(HttpReq0) of
         {ok, HttpReq1} ->
             process_request(HttpReq1);

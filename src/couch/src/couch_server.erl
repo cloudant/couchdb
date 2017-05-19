@@ -174,6 +174,7 @@ hash_admin_passwords(Persist) ->
         end, couch_passwords:get_unhashed_admins()).
 
 init([]) ->
+    process_flag(message_queue_data, off_heap),
     % read config and register for configuration changes
 
     % just stop if one of the config settings change. couch_server_sup

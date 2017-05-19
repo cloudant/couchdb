@@ -25,6 +25,10 @@
 -export([set_max_size/1]).
 -export([get_changes_pid/0]).
 
+% exported for testing and debugging
+
+-export([load_shards_from_db/2]).
+
 -record(st, {
     max_size = 25000,
     cur_size = 0,
@@ -553,7 +557,6 @@ mem3_shards_test_() ->
             t_flush_writer_crashes(),
             t_writer_deletes_itself_when_done(),
             t_writer_does_not_delete_other_writers_for_same_shard(),
-            t_spawn_writer_in_load_shards_from_db(),
             t_cache_insert_takes_new_update(),
             t_cache_insert_ignores_stale_update_and_kills_worker()
         ]
@@ -565,12 +568,10 @@ setup() ->
     ets:new(?OPENERS, [bag, public, named_table]),
     ets:new(?DBS, [set, public, named_table]),
     ets:new(?ATIMES, [ordered_set, public, named_table]),
-    meck:expect(config, get, ["mem3", "shards_db", '_'], "_dbs"),
     ok.
 
 
 teardown(_) ->
-    meck:unload(),
     ets:delete(?ATIMES),
     ets:delete(?DBS),
     ets:delete(?OPENERS),
@@ -653,27 +654,6 @@ t_writer_does_not_delete_other_writers_for_same_shard() ->
     end).
 
 
-t_spawn_writer_in_load_shards_from_db() ->
-    ?_test(begin
-        meck:expect(couch_db, open_doc, 3, {ok, #doc{body = {[]}}}),
-        meck:expect(couch_db, get_update_seq, 1, 1),
-        meck:expect(mem3_util, build_ordered_shards, 2, mock_shards()),
-        erlang:register(?MODULE, self()), % register to get cache_insert cast
-        load_shards_from_db(#db{name = <<"testdb">>}, ?DB),
-        meck:validate(couch_db),
-        meck:validate(mem3_util),
-        Cast = receive
-                {'$gen_cast', Msg} -> Msg
-            after 1000 ->
-                timeout
-        end,
-        ?assertMatch({cache_insert, ?DB, Pid, 1} when is_pid(Pid), Cast),
-        {cache_insert, _, WPid, _} = Cast,
-        exit(WPid, kill),
-        ?assertEqual([{?DB, WPid}], ets:tab2list(?OPENERS))
-    end).
-
-
 t_cache_insert_takes_new_update() ->
     ?_test(begin
         Shards = mock_shards(),
@@ -731,46 +711,6 @@ wait_writer_result(WRef) ->
 
 spawn_link_mock_writer(Db, Shards, Timeout) ->
     erlang:spawn_link(fun() -> shard_writer(Db, Shards, Timeout) end).
-
-
-
-mem3_shards_changes_test_() -> {
-    "Test mem3_shards changes listener", {
-        foreach,
-        fun setup_changes/0, fun teardown_changes/1,
-        [
-            fun should_kill_changes_listener_on_shutdown/1
-        ]
-    }
-}.
-
-
-setup_changes() ->
-    ok = meck:expect(mem3_util, ensure_exists, ['_'],
-        {ok, #db{name = <<"dbs">>, update_seq = 0}}),
-    ok = meck:expect(couch_db, close, ['_'], ok),
-    ok = application:start(config),
-    {ok, Pid} = ?MODULE:start_link(),
-    true = erlang:unlink(Pid),
-    Pid.
-
-
-teardown_changes(Pid) ->
-    true = exit(Pid, shutdown),
-    ok = application:stop(config),
-    meck:unload().
-
-
-should_kill_changes_listener_on_shutdown(Pid) ->
-    ?_test(begin
-        ?assert(is_process_alive(Pid)),
-        {ok, ChangesPid} = get_changes_pid(),
-        ?assert(is_process_alive(ChangesPid)),
-        true = test_util:stop_sync_throw(
-            ChangesPid, fun() -> exit(Pid, shutdown) end, wait_timeout),
-        ?assertNot(is_process_alive(ChangesPid)),
-        ok
-    end).
 
 
 -endif.

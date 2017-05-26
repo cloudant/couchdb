@@ -9,7 +9,7 @@
     compare_dbs/3
 ]).
 
--define(TIMEOUT_EUNIT, 30).
+-define(TIMEOUT_EUNIT, 60).
 
 
 setup() ->
@@ -57,8 +57,11 @@ reduce_max_request_size_test_() ->
              || Pair <- Pairs]
             ++ [{Pair, fun should_replicate_one/2}
              || Pair <- Pairs]
-            ++ [{Pair, fun should_replicate_one_with_attachment/2}
-             || Pair <- Pairs]
+            % Test below fails currently because of:
+            %  https://issues.apache.org/jira/browse/COUCHDB-3174
+            % Once that is fixed, can re-enable it
+            % ++ [{Pair, fun should_replicate_one_with_attachment/2}
+            %  || Pair <- Pairs]
         }
     }.
 

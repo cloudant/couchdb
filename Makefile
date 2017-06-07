@@ -114,9 +114,7 @@ else
 	@cp test/javascript/tests/lorem*.txt src/fauxton/dist/release/test/
 endif
 	@rm -rf dev/lib
-	@dev/run -n 1 -q --with-admin-party-please \
-            -c 'startup_jitter=0' \
-            test/javascript/run $(suites)
+	@dev/run -n 1 -q --with-admin-party-please test/javascript/run $(suites)
 
 
 .PHONY: check-qs

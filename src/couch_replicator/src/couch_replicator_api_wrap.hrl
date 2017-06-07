@@ -25,8 +25,7 @@
     wait = 250,         % milliseconds
     httpc_pool = nil,
     http_connections,
-    first_error_timestamp = nil,
-    proxy_url
+    backoff = 25
 }).
 
 -record(oauth, {

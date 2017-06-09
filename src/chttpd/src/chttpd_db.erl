@@ -308,7 +308,7 @@ delete_db_req(#httpd{}=Req, DbName) ->
     end.
 
 do_db_req(#httpd{path_parts=[DbName|_], user_ctx=Ctx}=Req, Fun) ->
-    fabric:get_security(DbName, [{user_ctx,Ctx}]), % calls check_is_reader
+    fabric:maybe_get_security(DbName, [{user_ctx,Ctx}]), % calls check_is_reader
     Fun(Req, #db{name=DbName, user_ctx=Ctx}).
 
 db_req(#httpd{method='GET',path_parts=[DbName]}=Req, _Db) ->

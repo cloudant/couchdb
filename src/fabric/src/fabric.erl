@@ -21,7 +21,7 @@
     delete_db/2, get_db_info/1, get_doc_count/1, set_revs_limit/3,
     set_security/2, set_security/3, get_revs_limit/1, get_security/1,
     get_security/2, get_all_security/1, get_all_security/2,
-    compact/1, compact/2]).
+    maybe_get_security/2, compact/1, compact/2]).
 
 % Documents
 -export([open_doc/3, open_revs/4, get_doc_info/3, get_full_doc_info/3,
@@ -145,6 +145,17 @@ get_security(DbName) ->
 get_security(DbName, Options) ->
     {ok, Db} = fabric_util:get_db(dbname(DbName), opts(Options)),
     try couch_db:get_security(Db) after catch couch_db:close(Db) end.
+
+%% @doc return ok for account_admin, otherwise retrieve the security object
+%% for a database.
+-spec maybe_get_security(dbname()) -> ok | {ok, json_obj()} | no_return().
+maybe_get_security(DbName, Options) ->
+    case proplists:get_value(account_admin, Options) of
+        true ->
+            ok;
+        false ->
+            {ok, get_security(DbName, Options)}
+    end.
 
 %% @doc retrieve the security object for all shards of a database
 -spec get_all_security(dbname()) ->

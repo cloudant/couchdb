@@ -148,18 +148,13 @@ wait_for_replicator(RepId) ->
 
 wait_for_task_status() ->
     test_util:wait(fun() ->
-        case replication_tasks() of
+        case couch_task_status:all() of
             [] ->
                 wait;
             Tasks ->
                 Tasks
         end
     end).
-
-replication_tasks() ->
-    lists:filter(fun(P) ->
-        couch_util:get_value(type, P) =:= replication
-    end, couch_task_status:all()).
 
 should_cancel_replication(RepId, RepPid) ->
     ?_assertNot(begin

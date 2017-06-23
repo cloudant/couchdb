@@ -16,11 +16,6 @@
 -include_lib("couch/include/couch_db.hrl").
 -include_lib("couch_replicator/src/couch_replicator.hrl").
 
--import(couch_replicator_test_helper, [
-    db_url/1,
-    get_pid/1
-]).
-
 -define(ATTFILE, filename:join([?FIXTURESDIR, "logo.png"])).
 -define(DELAY, 100).
 -define(TIMEOUT, 30000).
@@ -97,7 +92,7 @@ should_run_replication(RepPid, RepId, Source, Target) ->
 should_ensure_replication_still_running(RepPid, RepId, Source, Target) ->
     ?_test(check_active_tasks(RepPid, RepId, Source, Target)).
 
-check_active_tasks(RepPid, {BaseId, Ext} = RepId, Src, Tgt) ->
+check_active_tasks(RepPid, {BaseId, Ext} = _RepId, Src, Tgt) ->
     Source = case Src of
         {remote, NameSrc} ->
             <<(db_url(NameSrc))/binary, $/>>;
@@ -129,24 +124,21 @@ check_active_tasks(RepPid, {BaseId, Ext} = RepId, Src, Tgt) ->
     Pending = couch_util:get_value(changes_pending, RepTask),
     ?assert(is_integer(Pending)).
 
-rep_details(RepId) ->
-    gen_server:call(get_pid(RepId), get_details).
-
 replication_tasks() ->
     lists:filter(fun(P) ->
         couch_util:get_value(type, P) =:= replication
     end, couch_task_status:all()).
 
-wait_for_replicator(RepId) ->
+wait_for_replicator(Pid) ->
     %% since replicator started asynchronously
     %% we need to wait when it would be in couch_task_status
     %% we query replicator:details to ensure that do_init happen
-    ?assertMatch({ok, _}, rep_details(RepId)),
+    ?assertMatch({ok, _}, couch_replicator:details(Pid)),
     ok.
 
 should_cancel_replication(RepId, RepPid) ->
     ?_assertNot(begin
-        ok = couch_replicator_scheduler:remove_job(RepId),
+        {ok, _} = couch_replicator:cancel_replication(RepId),
         is_process_alive(RepPid)
     end).
 
@@ -308,6 +300,13 @@ wait_for_compaction(Type, Db) ->
                                          " database failed with: ", Reason])}]})
     end.
 
+db_url(DbName) ->
+    iolist_to_binary([
+        "http://", config:get("httpd", "bind_address", "127.0.0.1"),
+        ":", integer_to_list(mochiweb_socket_server:get(couch_httpd, port)),
+        "/", DbName
+    ]).
+
 replicate({remote, Db}, Target) ->
     replicate(db_url(Db), Target);
 
@@ -321,9 +320,7 @@ replicate(Source, Target) ->
         {<<"continuous">>, true}
     ]},
     {ok, Rep} = couch_replicator_utils:parse_rep_doc(RepObject, ?ADMIN_USER),
-    ok = couch_replicator_scheduler:add_job(Rep),
-    couch_replicator_scheduler:reschedule(),
-    Pid = get_pid(Rep#rep.id),
+    {ok, Pid} = couch_replicator:async_replicate(Rep),
     {ok, Pid, Rep#rep.id}.
 
 

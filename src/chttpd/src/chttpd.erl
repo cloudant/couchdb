@@ -300,6 +300,7 @@ process_request(#httpd{mochi_req = MochiReq} = HttpReq) ->
             {HttpReq, Response}
         end
     catch Tag:Error ->
+        io:format(user, "STACKTRACE: ~p~n", [erlang:get_stacktrace()]),
         {HttpReq, catch_error(HttpReq, Tag, Error)}
     end.
 

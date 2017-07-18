@@ -84,5 +84,6 @@ create_design_doc(DbName, DDName) ->
 query_text(BaseUrl, DbName, DDoc, Path) ->
     {ok, Code, _Headers, Body} = test_request:get(
         BaseUrl ++ "/" ++ DbName ++ "/_design/" ++ DDoc ++ "/" ++ Path),
+    io:format(user, "CRASH: ~p~n", [Body]),
     ?assertEqual(200, Code),
     Body.

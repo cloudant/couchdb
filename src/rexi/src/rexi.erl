@@ -72,7 +72,7 @@ cast(Node, Caller, MFA, Options) ->
 %% No rexi_EXIT message will be sent.
 -spec kill(node(), reference()) -> ok.
 kill(Node, Ref) ->
-    rexi_utils:send(rexi_utils:server_pid(Node), cast_msg({kill, Ref})),
+    erlang:send(rexi_utils:server_pid(Node), cast_msg({kill, Ref})),
     ok.
 
 %% @equiv async_server_call(Server, self(), Request)

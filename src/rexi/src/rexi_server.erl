@@ -112,8 +112,8 @@ init_p(Parent, State, From, {M,F,A}, Nonce) ->
             ok;
         Class:Reason ->
             Stack = clean_stack(),
-            Args = [M, F, length(A), Class, Reason, Stack],
-            couch_log:error("rexi_server ~s:~s/~b :: ~p:~p ~100p", Args),
+            Args = [M, F, length(A), Nonce, Class, Reason, Stack],
+            couch_log:error("rexi_server ~s:~s/~b - ~p - :: ~p:~p ~100p", Args),
             notify_caller(From, {Reason, Stack})
     end,
     remove_worker(State, self()),

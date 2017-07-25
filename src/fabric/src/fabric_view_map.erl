@@ -25,6 +25,7 @@ go(DbName, Options, GroupId, View, Args, Callback, Acc, VInfo)
     go(DbName, Options, DDoc, View, Args, Callback, Acc, VInfo);
 
 go(DbName, Options, DDoc, View, Args, Callback, Acc, VInfo) ->
+    start_monitor(),
     Shards = fabric_view:get_shards(DbName, Args),
     DocIdAndRev = fabric_util:doc_id_and_rev(DDoc),
     fabric_view:maybe_update_others(DbName, DocIdAndRev, Shards, View, Args),
@@ -85,6 +86,19 @@ go(DbName, Workers, {map, View, _}, Args, Callback, Acc0) ->
     {error, Resp} ->
         {ok, Resp}
     end.
+
+start_monitor() ->
+    Self = self(),
+    Nonce = get(nonce),
+    spawn(fun() ->
+        put(nonce, Nonce),
+        Ref = erlang:monitor(process, Self),
+        receive
+            {'DOWN', Ref, process, Self, Reason} ->
+                couch_log:error("XKCD: COORDINATOR ~p :: ~p", [Self, Reason])
+        end
+    end).
+
 
 handle_message({rexi_DOWN, _, {_, NodeRef}, _}, _, State) ->
     fabric_view:check_down_shards(State, NodeRef);

@@ -720,11 +720,11 @@ send_chunk(Resp, Data) ->
     {ok, Resp}.
 
 send_response(Req, Code, Headers0, Body) ->
-    Headers1 = iam([timing(), reqid() | Headers0]),
+    Headers1 = [timing(), reqid() | Headers0],
     couch_httpd:send_response(Req, Code, Headers1, Body).
 
 send_response_no_cors(Req, Code, Headers0, Body) ->
-    Headers1 = iam([timing(), reqid() | Headers0]),
+    Headers1 = [timing(), reqid() | Headers0],
     couch_httpd:send_response_no_cors(Req, Code, Headers1, Body).
 
 send_method_not_allowed(Req, Methods) ->
@@ -738,14 +738,14 @@ send_json(Req, Code, Value) ->
     send_json(Req, Code, [], Value).
 
 send_json(Req, Code, Headers0, Value) ->
-    Headers1 = iam([timing(), reqid() | Headers0]),
+    Headers1 = [timing(), reqid() | Headers0],
     couch_httpd:send_json(Req, Code, Headers1, Value).
 
 start_json_response(Req, Code) ->
     start_json_response(Req, Code, []).
 
 start_json_response(Req, Code, Headers0) ->
-    Headers1 = iam([timing(), reqid() |  Headers0]),
+    Headers1 = [timing(), reqid() | Headers0],
     couch_httpd:start_json_response(Req, Code, Headers1).
 
 end_json_response(Resp) ->
@@ -1043,16 +1043,6 @@ timing() ->
 
 reqid() ->
     {"X-Couch-Request-ID", get(nonce)}.
-
-%% Echo IAM transaction id in response if present in
-%% request's process dictionary
-iam(Headers) ->
-    case get(iam_transaction_id) of
-        undefined ->
-            Headers;
-        TransactionId ->
-            [{"Transaction-ID", TransactionId} | Headers]
-    end.
 
 json_stack({bad_request, _, _}) ->
     [];

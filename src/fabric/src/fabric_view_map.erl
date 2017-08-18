@@ -26,6 +26,7 @@ go(DbName, Options, GroupId, View, Args, Callback, Acc, VInfo)
 
 go(DbName, Options, DDoc, View, Args, Callback, Acc, VInfo) ->
     Shards = fabric_view:get_shards(DbName, Args),
+    ShardSubset = Args#mrargs.shard_key =/= undefined,
     DocIdAndRev = fabric_util:doc_id_and_rev(DDoc),
     fabric_view:maybe_update_others(DbName, DocIdAndRev, Shards, View, Args),
     Repls = fabric_view:get_shard_replacements(DbName, Shards),
@@ -36,7 +37,7 @@ go(DbName, Options, DDoc, View, Args, Callback, Acc, VInfo) ->
     Workers0 = fabric_util:submit_jobs(Shards, fabric_rpc, map_view, RPCArgs),
     RexiMon = fabric_util:create_monitors(Workers0),
     try
-        case fabric_util:stream_start(Workers0, #shard.ref, StartFun, Repls) of
+        case fabric_util:stream_start(Workers0, #shard.ref, StartFun, Repls, ShardSubset) of
             {ok, ddoc_updated} ->
                 Callback({error, ddoc_updated}, Acc);
             {ok, Workers} ->

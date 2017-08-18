@@ -16,7 +16,7 @@
         update_counter/3, remove_ancestors/2, create_monitors/1, kv/2,
         remove_down_workers/2, doc_id_and_rev/1]).
 -export([request_timeout/0, attachments_timeout/0, all_docs_timeout/0]).
--export([stream_start/2, stream_start/4]).
+-export([stream_start/2, stream_start/4, stream_start/5]).
 -export([log_timeout/2, remove_done_workers/2]).
 -export([is_users_db/1, is_replicator_db/1, fake_db/2]).
 -export([upgrade_mrargs/1]).
@@ -54,7 +54,10 @@ cleanup(Workers) ->
 stream_start(Workers, Keypos) ->
     stream_start(Workers, Keypos, undefined, undefined).
 
-stream_start(Workers0, Keypos, StartFun, Replacements) ->
+stream_start(Workers, Keypos, StartFun, Replacements) ->
+    stream_start(Workers, Keypos, StartFun, Replacements, false).
+
+stream_start(Workers0, Keypos, StartFun, Replacements, ShardSubset) ->
     Fun = fun handle_stream_start/3,
     Acc = #stream_acc{
         workers = fabric_dict:init(Workers0, waiting),
@@ -64,7 +67,7 @@ stream_start(Workers0, Keypos, StartFun, Replacements) ->
     Timeout = request_timeout(),
     case rexi_utils:recv(Workers0, Keypos, Fun, Acc, Timeout, infinity) of
         {ok, #stream_acc{workers=Workers}} ->
-            true = fabric_view:is_progress_possible(Workers),
+            true = is_progress_possible(Workers, ShardSubset),
             AckedWorkers = fabric_dict:fold(fun(Worker, From, WorkerAcc) ->
                 rexi:stream_start(From),
                 [Worker | WorkerAcc]
@@ -199,6 +202,12 @@ get_shard([#shard{node = Node, name = Name} | Rest], Opts, Timeout, Factor) ->
     after
         rexi_monitor:stop(Mon)
     end.
+
+
+is_progress_possible(Workers, false) ->
+    fabric_view:is_progress_possible(Workers);
+is_progress_possible([_Worker], true) ->
+    true.
 
 error_info({{<<"reduce_overflow_error">>, _} = Error, _Stack}) ->
     Error;

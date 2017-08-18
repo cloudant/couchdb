@@ -66,6 +66,8 @@
 
     preflight_fun,
 
+    shard_key,
+
     start_key,
     start_key_docid,
     end_key,

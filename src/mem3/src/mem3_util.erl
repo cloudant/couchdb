@@ -29,10 +29,17 @@
 -include_lib("mem3/include/mem3.hrl").
 -include_lib("couch/include/couch_db.hrl").
 
+-define(SHARD_TOKEN, <<":">>).
+
+hash(Item) when not is_binary(Item) ->
+    hash(term_to_binary(Item));
 hash(Item) when is_binary(Item) ->
-    erlang:crc32(Item);
-hash(Item) ->
-    erlang:crc32(term_to_binary(Item)).
+    case binary:split(Item, ?SHARD_TOKEN) of
+        [Item] ->
+            erlang:crc32(Item);
+        [ShardKey, _RemId] ->
+            erlang:crc32(ShardKey)
+    end.
 
 name_shard(Shard) ->
     name_shard(Shard, "").

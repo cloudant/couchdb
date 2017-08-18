@@ -306,6 +306,8 @@ index_of(X, [X|_Rest], I) ->
 index_of(X, [_|Rest], I) ->
     index_of(X, Rest, I+1).
 
+get_shards(DbName, #mrargs{shard_key=SK}) when SK =/= undefined ->
+    mem3:shards(DbName, SK);
 get_shards(DbName, #mrargs{stable=true}) ->
     mem3:ushards(DbName);
 get_shards(DbName, #mrargs{stable=false}) ->

@@ -517,6 +517,11 @@ parse_param(Key, Val, Args, IsDecoded) ->
             Args#mrargs{end_key_docid=couch_util:to_binary(Val)};
         "limit" ->
             Args#mrargs{limit=parse_pos_int(Val)};
+        "shard_key" when IsDecoded ->
+            Args#mrargs{shard_key=Val};
+        "shard_key" ->
+            JsonKey = ?JSON_DECODE(Val),
+            Args#mrargs{shard_key=JsonKey};
         "stale" when Val == "ok" orelse Val == <<"ok">> ->
             Args#mrargs{stable=true, update=false};
         "stale" when Val == "update_after" orelse Val == <<"update_after">> ->

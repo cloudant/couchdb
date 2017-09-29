@@ -5,6 +5,7 @@
 .DS_Store
 .rebar/
 .eunit/
+_build/
 log
 apache-couchdb-*/
 bin/
@@ -93,3 +94,4 @@ src/global_changes/ebin/
 src/mango/ebin/
 src/mango/test/*.pyc
 src/mango/venv/
+

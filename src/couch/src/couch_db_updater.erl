@@ -276,7 +276,7 @@ handle_info(timeout, #db{name=DbName} = Db) ->
     case couch_db:is_idle(Db) of
         true ->
             LastActivity = couch_db_engine:last_activity(Db),
-            DtMSec = time:now_diff(os:timestamp(), LastActivity) div 1000,
+            DtMSec = timer:now_diff(os:timestamp(), LastActivity) div 1000,
             MSecSinceLastActivity = max(0, DtMSec),
             case MSecSinceLastActivity > IdleLimitMSec of
                 true ->

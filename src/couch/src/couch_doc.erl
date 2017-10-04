@@ -20,6 +20,7 @@
 -export([doc_to_multi_part_stream/5, len_doc_to_multi_part_stream/4]).
 -export([restart_open_doc_revs/3]).
 -export([to_path/1]).
+-export([to_json_rev/2]).
 
 -export([with_ejson_body/1]).
 -export([is_deleted/1]).

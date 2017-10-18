@@ -154,8 +154,32 @@ assemble_file_chunk(Bin, Md5) ->
 
 
 pread_term(Fd, Pos) ->
-    {ok, Bin} = pread_binary(Fd, Pos),
-    {ok, couch_compress:decompress(Bin)}.
+    case config:get_boolean("couchdb", "use_couch_file_cache", true) of
+        true ->
+            case erlang:get(couch_file_hash) of
+                undefined ->
+                    {ok, Bin} = pread_binary(Fd, Pos),
+                    {ok, couch_compress:decompress(Bin)};
+                _ ->
+                    load_from_cache(Fd, Pos)
+            end;
+        false ->
+            {ok, Bin} = pread_binary(Fd, Pos),
+            {ok, couch_compress:decompress(Bin)}
+    end.
+
+
+load_from_cache(Fd, Pos) ->
+    Hash = erlang:get(couch_file_hash),
+    case ets:lookup(Hash, Pos) of
+        [{Pos, {ok, Res}}] ->
+            {ok, Res};
+        [] ->
+            {ok, Bin} = pread_binary(Fd, Pos),
+            Val = {ok, couch_compress:decompress(Bin)},
+            gen_server:cast(Fd, {cache, Pos, Val}),
+            Val
+    end.
 
 
 %%----------------------------------------------------------------------
@@ -358,6 +382,9 @@ init({Filepath, Options, ReturnPid, Ref}) ->
     Limit = get_pread_limit(),
     IsSys = lists:member(sys_db, Options),
     update_read_timestamp(),
+    Tab = list_to_atom(integer_to_list(mem3_util:hash(Filepath))),
+    erlang:put(couch_file_cache, Tab),
+    ets:new(Tab, [set, protected, named_table, {read_concurrency, true}]),
     case lists:member(create, Options) of
     true ->
         filelib:ensure_dir(Filepath),
@@ -500,6 +527,10 @@ handle_call({write_header, Bin}, _From, #file{fd = Fd, eof = Pos} = File) ->
 handle_call(find_header, _From, #file{fd = Fd, eof = Pos} = File) ->
     {reply, find_header(Fd, Pos div ?SIZE_BLOCK), File}.
 
+handle_cast({cache, Key, Val}, Fd) ->
+    Tab = erlang:get(couch_file_cache),
+    ets:insert(Tab, {Key, Val}),
+    {noreply, Fd};
 handle_cast(close, Fd) ->
     {stop,normal,Fd}.
 

@@ -56,6 +56,8 @@ start_link(DbName, Filepath, Options) ->
     end.
 
 open_db_file(Filepath, Options) ->
+    Hash = list_to_atom(integer_to_list(mem3_util:hash(Filepath))),
+    erlang:put(couch_file_hash, Hash),
     case couch_file:open(Filepath, Options) of
     {ok, Fd} ->
         {ok, Fd};
@@ -287,6 +289,13 @@ get_full_doc_info(Db, Id) ->
     Result.
 
 get_full_doc_infos(Db, Ids) ->
+    case erlang:get(couch_file_hash) of
+        undefined ->
+            Hash = list_to_atom(integer_to_list(mem3_util:hash(Db#db.filepath))),
+            erlang:put(couch_file_hash, Hash);
+        _ ->
+            ok
+    end,
     couch_btree:lookup(Db#db.id_tree, Ids).
 
 increment_update_seq(#db{main_pid=Pid}) ->

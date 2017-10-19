@@ -32,6 +32,7 @@
 -export([changes_key_opts/2]).
 -export([fold_changes/4]).
 -export([to_key_seq/1]).
+-export([maybe_match_selector/2]).
 
 -define(MOD, couch_mrview_index).
 -define(GET_VIEW_RETRY_COUNT, 1).
@@ -1180,3 +1181,15 @@ kv_external_size(KVList, Reduction) ->
     lists:foldl(fun([[Key, _], Value], Acc) ->
         ?term_size(Key) + ?term_size(Value) + Acc
     end, ?term_size(Reduction), KVList).
+
+
+maybe_match_selector(_, []) ->
+    % no document so do not attempt to match
+    true;
+
+maybe_match_selector(#mrargs{selector={}}, _) ->
+    % no selector
+    true;
+
+maybe_match_selector(#mrargs{selector=Selector}, [{doc, Doc}]) ->
+    mango_selector:match(Selector, Doc).

@@ -92,13 +92,14 @@ maybe_replace_max_json([H | T] = EndKey) when is_list(EndKey) ->
 maybe_replace_max_json(EndKey) ->
     EndKey.
 
-base_args(#cursor{index = Idx} = Cursor) ->
+base_args(#cursor{index = Idx, selector = Selector} = Cursor) ->
     #mrargs{
         view_type = map,
         reduce = false,
         start_key = mango_idx:start_key(Idx, Cursor#cursor.ranges),
         end_key = mango_idx:end_key(Idx, Cursor#cursor.ranges),
-        include_docs = true
+        include_docs = true,
+        selector = Selector
     }.
 
 
@@ -217,14 +218,9 @@ handle_message({row, Props}, Cursor) ->
             Cursor1 = Cursor#cursor {
                 execution_stats = ExecutionStats1
             },
-            case mango_selector:match(Cursor1#cursor.selector, Doc) of
-                true ->
-                    Cursor2 = update_bookmark_keys(Cursor1, Props),
-                    FinalDoc = mango_fields:extract(Doc, Cursor2#cursor.fields),
-                    handle_doc(Cursor2, FinalDoc);
-                false ->
-                    {ok, Cursor1}
-            end;
+            Cursor2 = update_bookmark_keys(Cursor1, Props),
+            FinalDoc = mango_fields:extract(Doc, Cursor2#cursor.fields),
+            handle_doc(Cursor2, FinalDoc);
         Error ->
             couch_log:error("~s :: Error loading doc: ~p", [?MODULE, Error]),
             {ok, Cursor}

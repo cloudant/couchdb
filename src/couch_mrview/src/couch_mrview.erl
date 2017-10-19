@@ -532,13 +532,18 @@ map_fold({{Key, Id}, Val}, _Offset, Acc) ->
         _ -> couch_mrview_util:maybe_load_doc(Db, Id, Val, Args)
     end,
     Row = [{id, Id}, {key, Key}, {value, Val}] ++ Doc,
-    {Go, UAcc1} = Callback({row, Row}, UAcc0),
-    {Go, Acc#mracc{
-        limit=Limit-1,
-        doc_info=undefined,
-        user_acc=UAcc1,
-        last_go=Go
-    }};
+    case couch_mrview_util:maybe_match_selector(Args, Doc) of
+        true ->
+            {Go, UAcc1} = Callback({row, Row}, UAcc0),
+            {Go, Acc#mracc{
+                limit=Limit-1,
+                doc_info=undefined,
+                user_acc=UAcc1,
+                last_go=Go
+            }};
+        _ ->
+            {ok, Acc}
+    end;
 map_fold({<<"_local/",_/binary>> = DocId, {Rev0, Body}}, _Offset, #mracc{} = Acc) ->
     #mracc{
         limit=Limit,

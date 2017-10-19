@@ -154,7 +154,7 @@ assemble_file_chunk(Bin, Md5) ->
 
 
 pread_term(Fd, Pos) ->
-    case config:get_boolean("couchdb", "use_couch_file_cache", true) of
+    case config:get_boolean("couchdb", "use_couch_file_cache", false) of
         true ->
             case erlang:get(couch_file_hash) of
                 undefined ->

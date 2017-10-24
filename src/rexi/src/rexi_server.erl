@@ -28,8 +28,8 @@
 }).
 
 -record(st, {
-    workers = ets:new(workers, [private, {keypos, #job.worker}]),
-    clients = ets:new(clients, [private, {keypos, #job.client}]),
+    workers,
+    clients,
     errors = queue:new(),
     error_limit = 0,
     error_count = 0
@@ -39,7 +39,9 @@ start_link(ServerId) ->
     gen_server:start_link({local, ServerId}, ?MODULE, [], []).
 
 init([]) ->
-    {ok, #st{}}.
+    {ok, Workers} = khash:new(),
+    {ok, Clients} = khash:new(),
+    {ok, #st{workers=Workers, clients=Clients}}.
 
 handle_call(get_errors, _From, #st{errors = Errors} = St) ->
     {reply, {ok, lists:reverse(queue:to_list(Errors))}, St};
@@ -119,8 +121,8 @@ handle_info(_Info, St) ->
     {noreply, St}.
 
 terminate(_Reason, St) ->
-    ets:foldl(fun(#job{worker_pid=Pid},_) -> exit(Pid,kill) end, nil,
-        St#st.workers),
+    lists:foreach(fun({_, #job{worker_pid=Pid}}) -> exit(Pid,kill) end,
+        khash:to_list(St#st.workers)),
     ok.
 
 code_change(_OldVsn, #st{}=State, _Extra) ->
@@ -166,17 +168,21 @@ clean_stack() ->
         erlang:get_stacktrace()).
 
 add_job(Job, #st{workers = Workers, clients = Clients} = State) ->
-    ets:insert(Workers, Job),
-    ets:insert(Clients, Job),
+    khash:put(Workers, worker_key(Job), Job),
+    khash:put(Clients, client_key(Job), Job),
     State.
 
 remove_job(Job, #st{workers = Workers, clients = Clients} = State) ->
-    ets:delete_object(Workers, Job),
-    ets:delete_object(Clients, Job),
+    khash:del(Workers, worker_key(Job)),
+    khash:del(Clients, client_key(Job)),
     State.
 
 find_worker(Ref, Tab) ->
-    case ets:lookup(Tab, Ref) of [] -> false; [Worker] -> Worker end.
+    case khash:lookup(Tab, Ref) of not_found -> false; {value, Worker} -> Worker end.
 
 notify_caller({Caller, Ref}, Reason) ->
     rexi_utils:send(Caller, {Ref, {rexi_EXIT, Reason}}).
+
+worker_key(#job{worker=Worker}) -> Worker.
+
+client_key(#job{client=Client}) -> Client.

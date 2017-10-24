@@ -53,7 +53,7 @@ for_db(DbName, Options) ->
         [] ->
             load_shards_from_disk(DbName);
         Else ->
-            gen_server:cast(?MODULE, {cache_hit, DbName}),
+            %%gen_server:cast(?MODULE, {cache_hit, DbName}),
             Else
     catch error:badarg ->
         load_shards_from_disk(DbName)
@@ -228,9 +228,9 @@ handle_call(get_changes_pid, _From, St) ->
 handle_call(_Call, _From, St) ->
     {noreply, St}.
 
-handle_cast({cache_hit, DbName}, St) ->
-    couch_stats:increment_counter([mem3, shard_cache, hit]),
-    cache_hit(DbName),
+handle_cast({cache_hit, _DbName}, St) ->
+    %%couch_stats:increment_counter([mem3, shard_cache, hit]),
+    %%cache_hit(DbName),
     {noreply, St};
 handle_cast({cache_insert, DbName, Writer, UpdateSeq}, St) ->
     % This comparison correctly uses the `<` operator

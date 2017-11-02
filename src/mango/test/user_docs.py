@@ -493,6 +493,7 @@ DOCS = [
         },
         "company": "Pharmex",
         "email": "faithhess@pharmex.com",
+        "manager": True,
         "favorites": [
             "Erlang",
             "Python",

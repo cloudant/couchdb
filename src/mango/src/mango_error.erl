@@ -43,7 +43,7 @@ info(mango_cursor, {no_usable_index, selector_unsupported}) ->
     {
         400,
         <<"no_usable_index">>,
-        <<"The index specified with \"use_index\" is not usable for the query.">>
+        <<"There is no index available for this selector.">>
     };
 
 info(mango_json_bookmark, {invalid_bookmark, BadBookmark}) ->

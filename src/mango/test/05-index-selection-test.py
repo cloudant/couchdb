@@ -18,7 +18,7 @@ import unittest
 class IndexSelectionTests:
 
     def test_basic(self):
-        resp = self.db.find({"age": 123}, explain=True)
+        resp = self.db.find({"name.last": "A last name"}, explain=True)
         self.assertEqual(resp["index"]["type"], "json")
 
     def test_with_and(self):
@@ -63,48 +63,6 @@ class IndexSelectionTests:
         else:
             raise AssertionError("bad find")
 
-    def test_uses_index_when_no_range_or_equals(self):
-        # index on ["manager"] should be valid because
-        # selector requires "manager" to exist. The
-        # selector doesn't narrow the keyrange so it's
-        # a full index scan
-        selector = {
-            "manager": {"$exists": True}
-        }
-        docs = self.db.find(selector)
-        self.assertEqual(len(docs), 14)
-
-        resp_explain = self.db.find(selector, explain=True)
-        self.assertEqual(resp_explain["index"]["type"], "json")
-
-
-    def test_reject_use_index_invalid_fields(self):
-        # index on ["company","manager"] which should not be valid
-        ddocid = "_design/a0c425a60cf3c3c09e3c537c9ef20059dcef9198"
-        selector = {
-            "company": "Pharmex"
-        }
-        try:
-            self.db.find(selector, use_index=ddocid)
-        except Exception as e:
-            self.assertEqual(e.response.status_code, 400)
-        else:
-            raise AssertionError("did not reject bad use_index")
-
-    def test_reject_use_index_sort_order(self):
-        # index on ["company","manager"] which should not be valid
-        ddocid = "_design/a0c425a60cf3c3c09e3c537c9ef20059dcef9198"
-        selector = {
-            "company": {"$gt": None},
-            "manager": {"$gt": None}
-        }
-        try:
-            self.db.find(selector, use_index=ddocid, sort=[{"manager":"desc"}])
-        except Exception as e:
-            self.assertEqual(e.response.status_code, 400)
-        else:
-            raise AssertionError("did not reject bad use_index")
-
     # This doc will not be saved given the new ddoc validation code
     # in couch_mrview
     def test_manual_bad_view_idx01(self):
@@ -142,44 +100,6 @@ class IndexSelectionTests:
             self.db.save_doc(design_doc)
 
 
-class JSONIndexSelectionTests(mango.UserDocsTests, IndexSelectionTests):
-
-    @classmethod
-    def setUpClass(klass):
-        super(JSONIndexSelectionTests, klass).setUpClass()
-
-    def test_uses_all_docs_when_fields_do_not_match_selector(self):
-        # index exists on ["company", "manager"] but not ["company"]
-        # so we should fall back to all docs (so we include docs
-        # with no "manager" field)
-        selector = {
-            "company": "Pharmex"
-        }
-        docs = self.db.find(selector)
-        self.assertEqual(len(docs), 1)
-        self.assertEqual(docs[0]["company"], "Pharmex")
-        self.assertNotIn("manager", docs[0])
-        
-        resp_explain = self.db.find(selector, explain=True)
-
-        self.assertEqual(resp_explain["index"]["type"], "special")
-
-    def test_uses_all_docs_when_selector_doesnt_require_fields_to_exist(self):
-        # as in test above, use a selector that doesn't overlap with the index
-        # due to an explicit exists clause
-        selector = {
-            "company": "Pharmex",
-            "manager": {"$exists": False}
-        }
-        docs = self.db.find(selector)
-        self.assertEqual(len(docs), 1)
-        self.assertEqual(docs[0]["company"], "Pharmex")
-        self.assertNotIn("manager", docs[0])
-
-        resp_explain = self.db.find(selector, explain=True)
-        self.assertEqual(resp_explain["index"]["type"], "special")
-
-
 @unittest.skipUnless(mango.has_text_service(), "requires text service")
 class TextIndexSelectionTests(mango.UserDocsTests, IndexSelectionTests):
 
@@ -211,7 +131,7 @@ class TextIndexSelectionTests(mango.UserDocsTests, IndexSelectionTests):
                 ]
             }, explain=True)
         self.assertEqual(resp["index"]["type"], "text")
-    
+
     def test_manual_bad_text_idx(self):
         design_doc = {
             "_id": "_design/bad_text_index",

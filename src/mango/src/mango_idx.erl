@@ -20,6 +20,7 @@
 -export([
     list/1,
     recover/1,
+    for_sort/2,
 
     new/2,
     validate_new/2,
@@ -35,7 +36,7 @@
     def/1,
     opts/1,
     columns/1,
-    is_usable/3,
+    is_usable/2,
     start_key/2,
     end_key/2,
     cursor_mod/1,
@@ -56,8 +57,9 @@ list(Db) ->
     {ok, Indexes} = ddoc_cache:open(db_to_name(Db), ?MODULE),
     Indexes.
 
+get_usable_indexes(Db, Selector0, Opts) ->
+    Selector = mango_selector:normalize(Selector0),
 
-get_usable_indexes(Db, Selector, Opts) ->
     ExistingIndexes = mango_idx:list(Db),
     if ExistingIndexes /= [] -> ok; true ->
         ?MANGO_ERROR({no_usable_index, no_indexes_defined})
@@ -68,17 +70,13 @@ get_usable_indexes(Db, Selector, Opts) ->
         ?MANGO_ERROR({no_usable_index, no_index_matching_name})
     end,
 
-    SortFields = get_sort_fields(Opts),
-    UsableFilter = fun(I) -> is_usable(I, Selector, SortFields) end,
-    UsableIndexes0 = lists:filter(UsableFilter, FilteredIndexes),
+    SortIndexes = mango_idx:for_sort(FilteredIndexes, Opts),
+    if SortIndexes /= [] -> ok; true ->
+        ?MANGO_ERROR({no_usable_index, missing_sort_index})
+    end,
 
-    case maybe_filter_by_sort_fields(UsableIndexes0, SortFields) of
-        {ok, SortIndexes} -> 
-            SortIndexes;
-        {error, no_usable_index} -> 
-            ?MANGO_ERROR({no_usable_index, missing_sort_index})
-    end.
-
+    UsableFilter = fun(I) -> mango_idx:is_usable(I, Selector) end,
+    lists:filter(UsableFilter, SortIndexes).
 
 recover(Db) ->
     {ok, DDocs0} = mango_util:open_ddocs(Db),
@@ -95,38 +93,33 @@ recover(Db) ->
     end, DDocs)}.
 
 
-get_sort_fields(Opts) ->
+for_sort(Indexes, Opts) ->
+    % If a sort was specified we have to find an index that
+    % can satisfy the request.
     case lists:keyfind(sort, 1, Opts) of
-        {sort, Sort} ->
-            mango_sort:fields(Sort);
+        {sort, {SProps}} when is_list(SProps) ->
+            for_sort_int(Indexes, {SProps});
         _ ->
-            []
+            Indexes
     end.
 
 
-maybe_filter_by_sort_fields(Indexes, []) ->
-    {ok, Indexes};
-
-maybe_filter_by_sort_fields(Indexes, SortFields) ->
+for_sort_int(Indexes, Sort) ->
+    Fields = mango_sort:fields(Sort),
     FilterFun = fun(Idx) ->
         Cols = mango_idx:columns(Idx),
         case {mango_idx:type(Idx), Cols} of
             {_, all_fields} ->
                 true;
             {<<"text">>, _} ->
-                sets:is_subset(sets:from_list(SortFields), sets:from_list(Cols));
+                sets:is_subset(sets:from_list(Fields), sets:from_list(Cols));
             {<<"json">>, _} ->
-                lists:prefix(SortFields, Cols);
+                lists:prefix(Fields, Cols);
             {<<"special">>, _} ->
-                lists:prefix(SortFields, Cols)
+                lists:prefix(Fields, Cols)
         end
     end,
-    case lists:filter(FilterFun, Indexes) of
-        [] ->
-            {error, no_usable_index};
-        FilteredIndexes ->
-            {ok, FilteredIndexes}
-    end.
+    lists:filter(FilterFun, Indexes).
 
 
 new(Db, Opts) ->
@@ -257,9 +250,9 @@ columns(#idx{}=Idx) ->
     Mod:columns(Idx).
 
 
-is_usable(#idx{}=Idx, Selector, SortFields) ->
+is_usable(#idx{}=Idx, Selector) ->
     Mod = idx_mod(Idx),
-    Mod:is_usable(Idx, Selector, SortFields).
+    Mod:is_usable(Idx, Selector).
 
 
 start_key(#idx{}=Idx, Ranges) ->

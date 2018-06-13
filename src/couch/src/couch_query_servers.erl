@@ -267,6 +267,9 @@ build_initial_accumulator(L) when is_list(L) ->
     [build_initial_accumulator(X) || X <- L];
 build_initial_accumulator(X) when is_number(X) ->
     {X, 1, X, X, X*X};
+% Forward compatibility clause in case of downgrade from 5fa3c43f2c7313
+build_initial_accumulator({_, _, _, _, _} = AlreadyUnpacked) ->
+    AlreadyUnpacked;
 build_initial_accumulator({Props}) ->
     unpack_stats({Props});
 build_initial_accumulator(Else) ->

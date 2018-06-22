@@ -67,7 +67,7 @@ for_docid(DbName, DocId) ->
     for_docid(DbName, DocId, []).
 
 for_docid(DbName, DocId, Options) ->
-    HashKey = mem3_util:hash(DocId),
+    HashKey = couch_util:docid_hash(DocId, [partitioned]), % TODO set this in Options
     ShardHead = #shard{
         dbname = DbName,
         range = ['$1', '$2'],
@@ -396,7 +396,7 @@ load_shards_from_db(ShardDb, DbName) ->
 
 load_shards_from_disk(DbName, DocId)->
     Shards = load_shards_from_disk(DbName),
-    HashKey = mem3_util:hash(DocId),
+    HashKey = couch_util:docid_hash(DocId, [partitioned]),
     [S || S <- Shards, in_range(S, HashKey)].
 
 in_range(Shard, HashKey) ->

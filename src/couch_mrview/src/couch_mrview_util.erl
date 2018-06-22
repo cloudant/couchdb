@@ -32,6 +32,7 @@
 -export([changes_key_opts/2]).
 -export([fold_changes/4]).
 -export([to_key_seq/1]).
+-export([partition_key/2, unpartition_key/2]).
 
 -define(MOD, couch_mrview_index).
 -define(GET_VIEW_RETRY_COUNT, 1).
@@ -562,7 +563,30 @@ validate_args(Args) ->
         _ -> mrverror(<<"Invalid value for `sorted`.">>)
     end,
 
+    {SK, EK} = case Args of
+        #mrargs{partition_key=undefined} ->
+            {Args#mrargs.start_key, Args#mrargs.end_key};
+
+        #mrargs{partition_key=PKey0} when not is_binary(PKey0) ->
+            mrverror(<<"`partition_key` must be a string.">>);
+
+        #mrargs{partition_key=PKey0, start_key=undefined, end_key=undefined} ->
+            {[PKey0, null], [<<PKey0/binary, 9>>, null]};
+
+        #mrargs{partition_key=PKey0, start_key=SK0, end_key=undefined} ->
+            {[PKey0, SK0], [<<PKey0/binary, 9>>, null]};
+
+        #mrargs{partition_key=PKey0, start_key=undefined, end_key=EK0} ->
+            {[PKey0, null], [PKey0, EK0]};
+
+        #mrargs{partition_key=PKey0, start_key=SK0, end_key=EK0} ->
+            {[PKey0, SK0], [PKey0, EK0]}
+    end,
+
     Args#mrargs{
+        start_key=SK,
+        end_key=EK,
+        partition_key=undefined,
         start_key_docid=SKDocId,
         end_key_docid=EKDocId,
         group_level=GroupLevel
@@ -1183,3 +1207,21 @@ kv_external_size(KVList, Reduction) ->
     lists:foldl(fun([[Key, _], Value], Acc) ->
         ?term_size(Key) + ?term_size(Value) + Acc
     end, ?term_size(Reduction), KVList).
+
+
+partition_key(Key, DocId) ->
+    case binary:split(DocId, <<":">>) of
+        [Partition, _Rest] ->
+            {[Partition, Key], DocId};
+        [DocId] ->
+            {Key, DocId}
+    end.
+
+unpartition_key(Key, DocId) ->
+    case binary:split(DocId, <<":">>) of
+        [Partition, _Rest] ->
+            [Partition, Key1] = Key,
+            Key1;
+        [DocId] ->
+            Key
+    end.

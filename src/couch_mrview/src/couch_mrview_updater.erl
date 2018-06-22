@@ -301,7 +301,7 @@ insert_results(DocId, Seq, Rev, [KVs | RKVs], [{Id, {VKVs, SKVs}} | RVKVs], VKVA
     couch_stats:increment_counter([couchdb, mrview, emits], length(KVs)),
     {Duped, VIdKeys0, Log1} = lists:foldl(CombineDupesFun, InitAcc,
                                           lists:sort(KVs)),
-    FinalKVs = [{{Key, DocId}, Val} || {Key, Val} <- Duped] ++ VKVs,
+    FinalKVs = [{couch_mrview_util:partition_key(Key, DocId), Val} || {Key, Val} <- Duped] ++ VKVs,
     FinalSKVs = [{{Seq, Key}, {DocId, Val, Rev}} || {Key, Val} <- Duped] ++ SKVs,
     insert_results(DocId, Seq, Rev, RKVs, RVKVs,
                   [{Id, {FinalKVs, FinalSKVs}} | VKVAcc], VIdKeys0, Log1).

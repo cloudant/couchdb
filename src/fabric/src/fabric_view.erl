@@ -265,11 +265,11 @@ transform_row(#view_row{key=Key, id=reduced, value=Value}) ->
 transform_row(#view_row{key=Key, id=undefined}) ->
     {row, [{key,Key}, {id,error}, {value,not_found}]};
 transform_row(#view_row{key=Key, id=Id, value=Value, doc=undefined}) ->
-    {row, [{id,Id}, {key,Key}, {value,Value}]};
-transform_row(#view_row{key=Key, id=_Id, value=_Value, doc={error,Reason}}) ->
-    {row, [{id,error}, {key,Key}, {value,Reason}]};
+    {row, [{id,Id}, {key, couch_mrview_util:unpartition_key(Key, Id)}, {value,Value}]};
+transform_row(#view_row{key=Key, id=Id, value=_Value, doc={error,Reason}}) ->
+    {row, [{id,error}, {key,couch_mrview_util:unpartition_key(Key, Id)}, {value,Reason}]};
 transform_row(#view_row{key=Key, id=Id, value=Value, doc=Doc}) ->
-    {row, [{id,Id}, {key,Key}, {value,Value}, {doc,Doc}]}.
+    {row, [{id,Id}, {key, couch_mrview_util:unpartition_key(Key, Id)}, {value,Value}, {doc,Doc}]}.
 
 compare(_, _, A, A) -> true;
 compare(fwd, <<"raw">>, A, B) -> A < B;
@@ -308,10 +308,14 @@ index_of(X, [X|_Rest], I) ->
 index_of(X, [_|Rest], I) ->
     index_of(X, Rest, I+1).
 
-get_shards(DbName, #mrargs{stable=true}) ->
+get_shards(DbName, #mrargs{stable=true, partition_key=undefined}) ->
     mem3:ushards(DbName);
-get_shards(DbName, #mrargs{stable=false}) ->
-    mem3:shards(DbName).
+get_shards(DbName, #mrargs{stable=true, partition_key=PartitionKey}) ->
+    mem3:ushards(DbName, PartitionKey);
+get_shards(DbName, #mrargs{stable=false, partition_key=undefined}) ->
+    mem3:shards(DbName);
+get_shards(DbName, #mrargs{stable=false, partition_key=PartitionKey}) ->
+    mem3:shards(DbName, PartitionKey).
 
 maybe_update_others(DbName, DDoc, ShardsInvolved, ViewName,
     #mrargs{update=lazy} = Args) ->

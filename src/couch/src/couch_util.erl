@@ -37,6 +37,7 @@
 -export([unique_monotonic_integer/0]).
 -export([check_config_blacklist/1]).
 -export([check_md5/2]).
+-export([docid_hash/1, docid_hash/2]).
 
 -include_lib("couch/include/couch_db.hrl").
 
@@ -637,6 +638,26 @@ validate_callback_exists(Module, Function, Arity) ->
 check_md5(_NewSig, <<>>) -> ok;
 check_md5(Sig, Sig) -> ok;
 check_md5(_, _) -> throw(md5_mismatch).
+
+
+docid_hash(DocId) when is_list(DocId) ->
+    docid_hash(?l2b(DocId), []);
+
+docid_hash(DocId) when is_binary(DocId) ->
+    docid_hash(DocId, []).
+
+
+docid_hash(DocId, Options) when is_list(DocId), is_list(Options) ->
+    docid_hash(?l2b(DocId), Options);
+
+docid_hash(DocId, Options) when is_binary(DocId), is_list(Options) ->
+    case lists:member(partitioned, Options) of
+        true ->
+            Partition = hd(binary:split(DocId, <<":">>)),
+            erlang:crc32(Partition);
+        false ->
+            erlang:crc32(DocId)
+    end.
 
 
 ensure_loaded(Module) when is_atom(Module) ->

@@ -87,6 +87,7 @@
     conflicts,
     callback,
     sorted = true,
+    partition_key,
     extra = []
 }).
 

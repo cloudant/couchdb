@@ -563,6 +563,9 @@ validate_args(Args) ->
         _ -> mrverror(<<"Invalid value for `sorted`.">>)
     end,
 
+    LowestKey = null,
+    HighestKey = {[{<<239, 191, 176>>, null}]}, % \ufff0
+
     {SK, EK} = case Args of
         #mrargs{partition_key=undefined} ->
             {Args#mrargs.start_key, Args#mrargs.end_key};
@@ -571,13 +574,13 @@ validate_args(Args) ->
             mrverror(<<"`partition_key` must be a string.">>);
 
         #mrargs{partition_key=PKey0, start_key=undefined, end_key=undefined} ->
-            {[PKey0, null], [<<PKey0/binary, 9>>, null]};
+            {[PKey0, LowestKey], [PKey0, HighestKey]};
 
         #mrargs{partition_key=PKey0, start_key=SK0, end_key=undefined} ->
-            {[PKey0, SK0], [<<PKey0/binary, 9>>, null]};
+            {[PKey0, SK0], [PKey0, HighestKey]};
 
         #mrargs{partition_key=PKey0, start_key=undefined, end_key=EK0} ->
-            {[PKey0, null], [PKey0, EK0]};
+            {[PKey0, LowestKey], [PKey0, EK0]};
 
         #mrargs{partition_key=PKey0, start_key=SK0, end_key=EK0} ->
             {[PKey0, SK0], [PKey0, EK0]}

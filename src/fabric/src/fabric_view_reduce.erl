@@ -141,10 +141,13 @@ handle_message({meta, Meta0}, {Worker, From}, State) ->
         }}
     end;
 
-handle_message(#view_row{key=Key} = Row, {Worker, From}, State) ->
+handle_message(#view_row{key=Key} = Row0, {Worker, From}, State) ->
     #collector{counters = Counters0, rows = Rows0} = State,
     true = fabric_dict:is_key(Worker, Counters0),
-    Rows = dict:append(Key, Row#view_row{worker={Worker, From}}, Rows0),
+    Row1 = Row0#view_row{worker={Worker, From}},
+    Row2 = fabric_view:unpartition_row(Row1),
+couch_log:error("handle_message ~p to ~p", [Row1, Row2]),
+    Rows = dict:append(Key, Row2, Rows0),
     C1 = fabric_dict:update_counter(Worker, 1, Counters0),
     State1 = State#collector{rows=Rows, counters=C1},
     fabric_view:maybe_send_row(State1);

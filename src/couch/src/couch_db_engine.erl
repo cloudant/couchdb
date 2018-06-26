@@ -762,6 +762,13 @@ get_size_info(#db{} = Db) ->
     Engine:get_size_info(EngineState).
 
 
+%% placeholder
+get_prop(#db{}, partitioned) ->
+    {ok, true};
+get_prop(#db{}, _Else) ->
+    {error, no_value}.
+
+
 get_update_seq(#db{} = Db) ->
     #db{engine = {Engine, EngineState}} = Db,
     Engine:get_update_seq(EngineState).

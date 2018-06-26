@@ -16,6 +16,7 @@
     transform_row/1, keydict/1, extract_view/4, get_shards/2,
     check_down_shards/2, handle_worker_exit/3,
     get_shard_replacements/2, maybe_update_others/5]).
+-export([unpartition_row/1]).
 
 -include_lib("fabric/include/fabric.hrl").
 -include_lib("mem3/include/mem3.hrl").
@@ -265,11 +266,16 @@ transform_row(#view_row{key=Key, id=reduced, value=Value}) ->
 transform_row(#view_row{key=Key, id=undefined}) ->
     {row, [{key,Key}, {id,error}, {value,not_found}]};
 transform_row(#view_row{key=Key, id=Id, value=Value, doc=undefined}) ->
-    {row, [{id,Id}, {key, couch_mrview_util:unpartition_key(Key, Id)}, {value,Value}]};
+    {row, [{id,Id}, {key, Key}, {value,Value}]};
 transform_row(#view_row{key=Key, id=Id, value=_Value, doc={error,Reason}}) ->
-    {row, [{id,error}, {key,couch_mrview_util:unpartition_key(Key, Id)}, {value,Reason}]};
+    {row, [{id,error}, {key, Key}, {value,Reason}]};
 transform_row(#view_row{key=Key, id=Id, value=Value, doc=Doc}) ->
-    {row, [{id,Id}, {key, couch_mrview_util:unpartition_key(Key, Id)}, {value,Value}, {doc,Doc}]}.
+    {row, [{id,Id}, {key, Key}, {value,Value}, {doc,Doc}]}.
+
+unpartition_row(#view_row{key=Key, id=Id} = Row) when is_binary(Key), is_binary(Id) ->
+    Row#view_row{key = couch_mrview_util:unpartition_key(Key, Id)};
+unpartition_row(#view_row{} = Row) ->
+    Row.
 
 compare(_, _, A, A) -> true;
 compare(fwd, <<"raw">>, A, B) -> A < B;

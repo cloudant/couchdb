@@ -129,8 +129,11 @@ maybe_send_row(State) ->
         try get_next_row(State) of
         {_, NewState} when Skip > 0 ->
             maybe_send_row(NewState#collector{skip=Skip-1});
-        {Row, NewState} ->
-            case Callback(transform_row(possibly_embed_doc(NewState,Row)), AccIn) of
+        {Row0, NewState} ->
+            Row1 = possibly_embed_doc(NewState,Row0),
+            Row2 = unpartition_row(Row1),
+            Row3 = transform_row(Row2),
+            case Callback(Row3, AccIn) of
             {stop, Acc} ->
                 {stop, NewState#collector{user_acc=Acc, limit=Limit-1}};
             {ok, Acc} ->
@@ -267,12 +270,12 @@ transform_row(#view_row{key=Key, id=undefined}) ->
     {row, [{key,Key}, {id,error}, {value,not_found}]};
 transform_row(#view_row{key=Key, id=Id, value=Value, doc=undefined}) ->
     {row, [{id,Id}, {key, Key}, {value,Value}]};
-transform_row(#view_row{key=Key, id=Id, value=_Value, doc={error,Reason}}) ->
+transform_row(#view_row{key=Key, id=_Id, value=_Value, doc={error,Reason}}) ->
     {row, [{id,error}, {key, Key}, {value,Reason}]};
 transform_row(#view_row{key=Key, id=Id, value=Value, doc=Doc}) ->
     {row, [{id,Id}, {key, Key}, {value,Value}, {doc,Doc}]}.
 
-unpartition_row(#view_row{key=Key, id=Id} = Row) when is_binary(Key), is_binary(Id) ->
+unpartition_row(#view_row{key=Key, id=Id} = Row) when is_binary(Id) ->
     Row#view_row{key = couch_mrview_util:unpartition_key(Key, Id)};
 unpartition_row(#view_row{} = Row) ->
     Row.

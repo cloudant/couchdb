@@ -148,11 +148,9 @@ handle_message(#view_row{}, {_, _}, #collector{limit=0} = State) ->
     {_, Acc} = Callback(complete, State#collector.user_acc),
     {stop, State#collector{user_acc=Acc}};
 
-handle_message(#view_row{} = Row0, {_,From}, #collector{sorted=false} = St) ->
+handle_message(#view_row{} = Row, {_,From}, #collector{sorted=false} = St) ->
     #collector{callback=Callback, user_acc=AccIn, limit=Limit} = St,
-    Row1 = fabric_view:unpartition_row(Row0),
-    Row2 = fabric_view:transform_row(Row1),
-    {Go, Acc} = Callback(Row2, AccIn),
+    {Go, Acc} = Callback(fabric_view:transform_row(Row), AccIn),
     rexi:stream_ack(From),
     {Go, St#collector{user_acc=Acc, limit=Limit-1}};
 

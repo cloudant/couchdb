@@ -672,7 +672,7 @@ check_md5(_, _) -> throw(md5_mismatch).
 
 set_mqd_off_heap() ->
     try
-        erlang:process_flag(message_queue_data, off_heap),
+        erlang:process_flag(message_queue_data, on_heap),
         ok
     catch error:badarg ->
         ok

@@ -129,7 +129,14 @@ defmodule SecurityValidationTest do
     ddoc = Map.put(@ddoc, :_rev, new_rev) |> Map.put(:foo, "bar")
     headers = @auth_headers[:tom]
     # attempt to save doc in replication context, eg ?new_edits=false
-    resp = Couch.put("/#{db_name}/#{ddoc[:_id]}", body: ddoc, headers: headers, query: %{new_edits: false})
+    resp =
+      Couch.put(
+        "/#{db_name}/#{ddoc[:_id]}",
+        body: ddoc,
+        headers: headers,
+        query: %{new_edits: false}
+      )
+
     assert resp.status_code == 403
     assert resp.body["error"] == "forbidden"
   end
@@ -158,7 +165,11 @@ defmodule SecurityValidationTest do
     assert resp.body["reason"] == "Documents must have an author field"
 
     # Jerry can write the document
-    assert Couch.put("/#{db_name}/test_doc", body: %{foo: 1, author: "jerry"}, headers: jerry).body["ok"]
+    assert Couch.put(
+             "/#{db_name}/test_doc",
+             body: %{foo: 1, author: "jerry"},
+             headers: jerry
+           ).body["ok"]
 
     test_doc = Couch.get("/#{db_name}/test_doc").body
 
@@ -168,7 +179,9 @@ defmodule SecurityValidationTest do
     assert resp.body["error"] == "forbidden"
 
     # Enable admin override for changing author values
-    assert Couch.put("/#{db_name}/_security", body: %{sec_obj | admin_override: true}).body["ok"]
+    assert Couch.put("/#{db_name}/_security", body: %{sec_obj | admin_override: true}).body[
+             "ok"
+           ]
 
     # Change owner to Tom
     test_doc = Map.put(test_doc, "author", "tom")

@@ -38,6 +38,8 @@
 -export([check_config_blacklist/1]).
 -export([check_md5/2]).
 -export([set_mqd_off_heap/1]).
+-export([set_cluster_admin_password/2]).
+
 
 -include_lib("couch/include/couch_db.hrl").
 
@@ -753,3 +755,17 @@ check_config_blacklist(Section) ->
     _ ->
         ok
     end.
+
+set_cluster_admin_password(Username, Password) ->
+    Section = "admins",
+    ok = config:set(Section, Username, Password),
+    HashedPassword = test_util:wait(fun() ->
+        case config:get(Section, Username, Password) of
+            Password -> wait;
+            Hashed -> Hashed
+        end
+    end, 100, 5),
+    {Results, []} = rpc:multicall(config, set,
+        [Section, Username, HashedPassword]),
+    true = lists:all(fun(ok) -> true end, Results),
+    HashedPassword.

@@ -8,7 +8,7 @@ defmodule Couch.Test.CRUD do
   test_groups = [
     "using Clustered API": {Clustered, %{service: :chttpd}},
     "using Backdoor API": {Backdoor, %{service: :couch_httpd}},
-    "using Fabric API": {Fabric, %{}},
+    "using Fabric API": {Fabric, %{service: nil}}
   ]
 
   for {describe, {adapter, args}} <- test_groups do
@@ -18,12 +18,13 @@ defmodule Couch.Test.CRUD do
         with ctx when Record.is_record(ctx, :test_context) <-
                :test_util.start_couch([:chttpd]),
              # FIXME
-             %{} = adapter <- adapter.new(Utils.connection_url(args.service)),
-             :ok <- Utils.add_admin("adm", "pass"), # FIXME
+             %{} = adapter <- adapter.new("Utils.connection_url(args.service)"),
+             # FIXME
+             :ok <- Utils.add_admin("adm", "pass"),
              %{} = adapter <- Adapter.login(adapter, "adm", "pass") do
           db_name = Utils.random_name("db")
           assert {ok, resp} = Adapter.create_db(adapter, db_name)
-          assert :ok = resp
+          assert resp.body["ok"]
           # TODO query all dbs to make sure db_name is added
         else
           resp -> assert :ok = resp

@@ -15,10 +15,10 @@ defimpl Couch.Test.Adapter, for: Couch.Test.Adapter.Fabric do
     retry_until: 3,
   ]
   @moduledoc "Implements Fabric API testing adapter"
-  def add_admin
   def login(adapter, user, pass) do
     adapter
   end
+
   def create_user(adapter, user) do
     if user == [] do
       user = Couch.Test.random_name("user")
@@ -33,7 +33,7 @@ defimpl Couch.Test.Adapter, for: Couch.Test.Adapter.Fabric do
   def create_db(adapter, db_name, opts \\ []) do
     # FIXME opts will be different for every adapter type
     assert :ok = :fabric.create_db(db_name, opts)
-    {:ok, :ok}
+    {:ok, %{body: %{"ok" => true}}}
   end
 
   def delete_db(adapter, db_name) do

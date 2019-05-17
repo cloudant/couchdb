@@ -19,7 +19,7 @@ defimpl Couch.Test.Adapter, for: Couch.Test.Adapter.Backdoor do
   ]
   
   def login(adapter, user, pass) do
-    # FIXME this woulod work only if we run on the same VM
+    # TODO this would work only if we run on the same VM
     addr = :config.get('couch_httpd', 'bind_address', '127.0.0.1')
     port = :mochiweb_socket_server.get(:couch_httpd, :port)
     base_url = "http://#{addr}:#{port}"

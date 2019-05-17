@@ -1,19 +1,22 @@
 defmodule Couch.Test.Adapter.Fabric do
   @moduledoc "Fabric API testing adapter type"
   defstruct [:connection_str, :session]
-  def new(connection_str) do
-    %Couch.Test.Adapter.Fabric{
-    }
+
+  def new() do
+    %Couch.Test.Adapter.Fabric{}
   end
 end
 
 defimpl Couch.Test.Adapter, for: Couch.Test.Adapter.Fabric do
   import ExUnit.Assertions
-  import Couch.DBTest, only: [
-    retry_until: 1,
-    retry_until: 2,
-    retry_until: 3,
-  ]
+
+  import Couch.DBTest,
+    only: [
+      retry_until: 1,
+      retry_until: 2,
+      retry_until: 3
+    ]
+
   @moduledoc "Implements Fabric API testing adapter"
   def login(adapter, user, pass) do
     adapter
@@ -23,28 +26,29 @@ defimpl Couch.Test.Adapter, for: Couch.Test.Adapter.Fabric do
     if user == [] do
       user = Couch.Test.random_name("user")
     end
+
     user_doc = Couch.Test.Adapter.Shared.format_user_doc(user)
-    # FIXME
+    # TODO
     doc = :couch_doc.from_json_obj(user_doc)
     assert {:ok, resp} = :fabric.update_doc("_users", doc, [])
     {:ok, resp}
   end
 
   def create_db(adapter, db_name, opts \\ []) do
-    # FIXME opts will be different for every adapter type
+    # TODO opts will be different for every adapter type
     assert :ok = :fabric.create_db(db_name, opts)
     {:ok, %{body: %{"ok" => true}}}
   end
 
   def delete_db(adapter, db_name) do
-  	assert :ok = :fabric.delete_db(db_name)
+    assert :ok = :fabric.delete_db(db_name)
     {:ok, :ok}
   end
 
   def create_doc(adapter, db_name, body) do
     doc = :couch_doc.from_json_obj(body)
     assert {:ok, resp} = :fabric.update_doc(db_name, doc, [])
-    {:ok, resp}  
+    {:ok, resp}
   end
 
   def open_doc(adapter, db_name, doc_name) do
@@ -65,15 +69,20 @@ defimpl Couch.Test.Adapter, for: Couch.Test.Adapter.Fabric do
         keys \\ nil,
         language \\ "javascript"
       ) do
-      
     {view_options, request_options} =
       if options != nil and Map.has_key?(options, :options) do
         {options.options, Map.delete(options, :options)}
       else
         {nil, options}
       end
-    ddoc = Couch.Test.Adapter.Shared.format_query_ddoc(
-      map_fun, reduce_fun, language, view_options)
+
+    ddoc =
+      Couch.Test.Adapter.Shared.format_query_ddoc(
+        map_fun,
+        reduce_fun,
+        language,
+        view_options
+      )
 
     request_options =
       if keys != nil and is_list(keys) do
@@ -91,16 +100,15 @@ defimpl Couch.Test.Adapter, for: Couch.Test.Adapter.Fabric do
 
     assert resp.status_code == 201
 
-	# FIXME transform resp
+    # TODO transform resp
     resp = :fabric.query_view(db_name, ddoc._id, "view")
 
     adapter.delete_doc(db_name, ddoc._id)
 
     {:ok, resp}
   end
+
   def set_config(adapter, section, key, val) do
-    IO.inspect(:ets.info(:config))
     :config.set(section, key, String.to_charlist(val), false)
   end
- 
 end

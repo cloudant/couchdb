@@ -34,7 +34,7 @@ defmodule CouchDBTest.Mixfile do
   defp deps() do
     [
       {:httpotion, "~> 3.0", only: [:dev, :test], runtime: false},
-      {:jiffy, "~> 0.15.2", only: [:dev, :test], runtime: false},
+      {:jiffy, in_umbrella: true},
       {:credo, "~> 1.0.0", only: [:dev, :test], runtime: false}
     ]
   end

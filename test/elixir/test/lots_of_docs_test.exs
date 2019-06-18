@@ -1,6 +1,7 @@
 defmodule LotsOfDocsTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :lots_of_docs
   @docs_range 0..499
 

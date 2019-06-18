@@ -1,6 +1,7 @@
 defmodule AttachmentsTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :attachments
 
   #  MD5 Digests of compressible attachments and therefore Etags

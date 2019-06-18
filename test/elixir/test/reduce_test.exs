@@ -1,6 +1,7 @@
 defmodule ReduceTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :views
 
   @moduledoc """

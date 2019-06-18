@@ -1,6 +1,7 @@
 defmodule AttachmentPathsTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :attachments
 
   @bin_att_doc """

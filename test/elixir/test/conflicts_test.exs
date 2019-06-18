@@ -1,6 +1,7 @@
 defmodule RevisionTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :conflicts
 
   @moduledoc """

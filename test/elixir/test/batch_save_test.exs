@@ -1,6 +1,7 @@
 defmodule BatchSaveTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :batch_save
 
   @moduledoc """

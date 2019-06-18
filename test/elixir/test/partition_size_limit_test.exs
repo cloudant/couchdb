@@ -1,6 +1,8 @@
 defmodule PartitionSizeLimitTest do
   use CouchTestCase
 
+  @moduletag :integration
+
   @moduledoc """
   Test Partition size limit functionality
   """

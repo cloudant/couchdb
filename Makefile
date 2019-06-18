@@ -185,7 +185,7 @@ exunit: couch elixir-check-formatted elixir-credo
 	@mix local.rebar rebar ${REBAR} --force
 	@mix deps.get
 	@$(REBAR) setup_eunit 2> /dev/null
-	@mix test --trace $(EXUNIT_OPTS)
+	@mix test --trace $(EXUNIT_OPTS) --exclude integration
 
 setup-eunit: export BUILDDIR = $(shell pwd)
 setup-eunit: export ERL_AFLAGS = -config $(shell pwd)/rel/files/eunit.config
@@ -227,11 +227,11 @@ python-black-update: .venv/bin/black
 
 .PHONY: elixir
 elixir: elixir-init elixir-check-formatted elixir-credo devclean
-	@dev/run -a adm:pass --no-eval 'test/elixir/run --exclude without_quorum_test --exclude with_quorum_test $(EXUNIT_OPTS)'
+	@dev/run -a adm:pass --no-eval 'test/elixir/run --exclude without_quorum_test --exclude with_quorum_test $(EXUNIT_OPTS) --only integration'
 
 .PHONY: elixir-init
 elixir-init:
-	@cd test/elixir && mix local.rebar --force && mix local.hex --force && mix deps.get
+	@mix local.rebar --force && mix local.hex --force && mix deps.get
 
 .PHONY: elixir-cluster-without-quorum
 elixir-cluster-without-quorum: elixir-check-formatted elixir-credo devclean

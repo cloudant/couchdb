@@ -2,6 +2,8 @@ defmodule PartitionMangoTest do
   use CouchTestCase
   import PartitionHelpers, except: [get_partitions: 1]
 
+  @moduletag :integration
+
   @moduledoc """
   Test Partition functionality for mango
   """

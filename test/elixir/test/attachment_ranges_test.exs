@@ -1,6 +1,7 @@
 defmodule AttachmentRangesTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :attachments
 
   @moduledoc """

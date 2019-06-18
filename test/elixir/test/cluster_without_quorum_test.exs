@@ -1,6 +1,7 @@
 defmodule WithoutQuorumTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :without_quorum_test
 
   @moduledoc """

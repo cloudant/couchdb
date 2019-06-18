@@ -2,6 +2,8 @@ defmodule ViewPartitionTest do
   use CouchTestCase
   import PartitionHelpers
 
+  @moduletag :integration
+
   @moduledoc """
   Test Partition functionality for views
   """

@@ -1,6 +1,7 @@
 defmodule AllDocsTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :all_docs
 
   @moduledoc """

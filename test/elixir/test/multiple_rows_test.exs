@@ -1,6 +1,7 @@
 defmodule MultipleRowsTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :multiple_rows
 
   @north_carolina_cities ["Charlotte", "Raleigh"]

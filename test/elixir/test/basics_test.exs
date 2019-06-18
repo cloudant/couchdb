@@ -1,6 +1,7 @@
 defmodule BasicsTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :basics
 
   @moduledoc """

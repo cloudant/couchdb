@@ -2,6 +2,8 @@ defmodule ReshardAllDocsTest do
   use CouchTestCase
   import ReshardHelpers
 
+  @moduletag :integration
+
   @moduledoc """
   Test _all_docs interaction with resharding
   """

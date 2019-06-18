@@ -40,6 +40,9 @@ defmodule CouchDBTest.Mixfile do
   end
 
   def get_test_paths do
-    Path.wildcard("src/*/test/exunit") |> Enum.filter(&File.dir?/1)
+    [
+      "test/elixir/test/"
+      | Path.wildcard("src/*/test/exunit") |> Enum.filter(&File.dir?/1)
+    ]
   end
 end

@@ -1,6 +1,7 @@
 defmodule AttachmentNamesTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :attachments
 
   @good_doc """

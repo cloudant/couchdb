@@ -2,6 +2,8 @@ defmodule ReshardChangesFeedTest do
   use CouchTestCase
   import ReshardHelpers
 
+  @moduletag :integration
+
   @moduledoc """
   Test _changes interaction with resharding
   """

@@ -1,6 +1,8 @@
 defmodule PartitionCrudTest do
   use CouchTestCase
 
+  @moduletag :integration
+
   @tag :with_partitioned_db
   test "Sets partition in db info", context do
     db_name = context[:db_name]

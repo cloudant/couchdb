@@ -1,6 +1,8 @@
 defmodule PartitionDesignDocsTest do
   use CouchTestCase
 
+  @moduletag :integration
+
   @moduledoc """
   Test Partition functionality for partition design docs
   """

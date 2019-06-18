@@ -1,6 +1,8 @@
 defmodule PartitionSizeTest do
   use CouchTestCase
 
+  @moduletag :integration
+
   @moduledoc """
   Test Partition size functionality
   """

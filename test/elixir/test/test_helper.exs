@@ -11,6 +11,7 @@ ExUnit.configure(
   formatters: [JUnitFormatter, ExUnit.CLIFormatter]
 )
 
+{:ok, _started} = Application.ensure_all_started(:httpotion)
 ExUnit.start()
 Code.require_file("partition_helpers.exs", __DIR__)
 Code.require_file("reshard_helpers.exs", __DIR__)

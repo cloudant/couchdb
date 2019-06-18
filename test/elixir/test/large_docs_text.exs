@@ -1,6 +1,7 @@
 defmodule LargeDocsTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :large_docs
   @long_string "0123456789\n"
 

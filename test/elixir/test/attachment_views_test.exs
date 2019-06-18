@@ -1,6 +1,7 @@
 defmodule AttachmentViewTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :attachments
 
   @moduledoc """

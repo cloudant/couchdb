@@ -1,6 +1,7 @@
 defmodule SecurityValidationTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :security
 
   @moduledoc """

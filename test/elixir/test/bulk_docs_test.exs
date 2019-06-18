@@ -1,6 +1,7 @@
 defmodule BulkDocsTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :bulk_docs
 
   @moduledoc """

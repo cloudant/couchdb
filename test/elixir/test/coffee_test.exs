@@ -1,6 +1,7 @@
 defmodule CoffeeTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :coffee
 
   @moduledoc """

@@ -1,6 +1,7 @@
 defmodule CompactTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :compact
 
   @moduledoc """

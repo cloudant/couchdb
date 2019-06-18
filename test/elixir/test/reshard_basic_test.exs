@@ -2,6 +2,8 @@ defmodule ReshardBasicTest do
   use CouchTestCase
   import ReshardHelpers
 
+  @moduletag :integration
+
   @moduledoc """
   Test resharding basic functionality
   """

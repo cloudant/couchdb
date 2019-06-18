@@ -2,6 +2,8 @@ defmodule PartitionViewUpdateTest do
   use CouchTestCase
   import PartitionHelpers
 
+  @moduletag :integration
+
   @moduledoc """
   Test Partition view update functionality
   """

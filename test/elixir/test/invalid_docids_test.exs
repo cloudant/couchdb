@@ -1,6 +1,7 @@
 defmodule InvalidDocIDsTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :invalid_doc_ids
 
   @moduledoc """

@@ -1,6 +1,7 @@
 defmodule CopyDocTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :copy_doc
 
   @moduledoc """

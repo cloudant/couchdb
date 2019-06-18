@@ -1,6 +1,7 @@
 defmodule WithQuorumTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :with_quorum_test
 
   @moduledoc """

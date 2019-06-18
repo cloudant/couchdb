@@ -1,6 +1,7 @@
 defmodule RewriteTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :js_engine
 
   @moduledoc """

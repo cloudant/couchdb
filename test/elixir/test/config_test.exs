@@ -1,6 +1,7 @@
 defmodule ConfigTest do
   use CouchTestCase
 
+  @moduletag :integration
   @moduletag :config
 
   @moduledoc """

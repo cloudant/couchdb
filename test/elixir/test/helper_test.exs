@@ -1,6 +1,8 @@
 defmodule HelperTest do
   use CouchTestCase
 
+  @moduletag :integration
+
   @moduledoc """
   Test helper code
   """

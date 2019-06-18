@@ -1,6 +1,8 @@
 defmodule DelayedCommitsTest do
   use CouchTestCase
 
+  @moduletag :integration
+
   @moduledoc """
   Test CouchDB delayed commits
   This is a port of the delayed_commits.js suite

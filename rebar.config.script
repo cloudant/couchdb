@@ -114,6 +114,10 @@ DepDescs = [
 %%
 {weatherreport,    {url, "https://github.com/cloudant/weatherreport.git"},
                    {branch, "45918-pluggable-storage-engines"}}, % FIXME with proper tag
+{custodian,        {url, "https://github.com/cloudant/custodian.git"},
+                   {branch, "master"}}, % FIXME with proper tag
+{recon,            {url, "https://github.com/cloudant/recon.git"},
+                   {branch, "cloudant-local"}}, % FIXME with proper tag
 %% Third party deps
 {folsom,           "folsom",           {tag, "CouchDB-0.8.3"}},
 {hyper,            "hyper",            {tag, "CouchDB-2.2.0-4"}},

@@ -1,7 +1,10 @@
 defmodule CouchDBTest.Mixfile do
   use Mix.Project
 
+  @src_dir Path.expand("src", __DIR__)
+
   def project do
+    set_env()
     [
       app: :couchdbtest,
       version: "0.1.0",
@@ -35,6 +38,7 @@ defmodule CouchDBTest.Mixfile do
   # Run "mix help deps" to learn about dependencies.
   defp deps() do
     [
+      {:grpcbox, git: "https://github.com/cloudant-labs/grpcbox.git", branch: "no-logger"},
       {:httpotion, "~> 3.0", only: [:dev, :test, :integration], runtime: false},
       {:jiffy, path: Path.expand("src/jiffy", __DIR__)},
       {:ibrowse,
@@ -56,5 +60,11 @@ defmodule CouchDBTest.Mixfile do
 
   def get_test_paths(_) do
     []
+  end
+
+  defp set_env() do
+    # This is the only option to add include dir when we calling into
+    # external manager `rebar` | `rebar3`
+    System.put_env("ERL_COMPILER_OPTIONS", "[{i, \"#{@src_dir}\"}]")
   end
 end

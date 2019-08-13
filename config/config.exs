@@ -10,11 +10,11 @@ use Mix.Config
 
 # You can configure your application as:
 #
-#     config :couchdbtest, key: :value
+#     config :couchdbapp, key: :value
 #
 # and access this configuration in your application as:
 #
-#     Application.get_env(:couchdbtest, :key)
+#     Application.get_env(:couchdbapp, :key)
 #
 # You can also configure a 3rd-party app:
 #

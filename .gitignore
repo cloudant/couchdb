@@ -31,8 +31,11 @@ rel/tmpdata
 share/server/main-coffee.js
 share/server/main.js
 share/www
+src/acceptor_pool/
+src/ateles
 src/b64url/
 src/bear/
+src/chatterbox/
 src/config/
 src/couch/priv/couch_js/config.h
 src/couch/priv/couchjs
@@ -49,6 +52,9 @@ src/erlfdb/
 src/ets_lru/
 src/fauxton/
 src/folsom/
+src/gproc
+src/grpcbox
+src/hpack
 src/hqueue/
 src/hyper/
 src/ibrowse/

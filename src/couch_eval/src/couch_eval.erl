@@ -24,11 +24,20 @@
 -include("couch_eval.hrl").
 
 
--spec get_map_context(dbname(), ddoc_id(), language(), sig(), lib(),
+-spec get_map_context(db_name(), ddoc_id(), language(), sig(), lib(),
     [map_fun()]) -> {ok, context()} | error().
 get_map_context(DbName, DDocId, Language, Sig, Lib, MapFuns) ->
-    couch_eval_server:get_map_context(DbName, DDocId, Language,
-        Sig, Lib, MapFuns).
+    ApiMod = get_api_mod(Language),
+    CtxOpts = #{
+        db_name => DbName,
+        ddoc_id => DDocId,
+        language => Language,
+        sig => Sig,
+        lib => Lib,
+        map_funs => MapFuns,
+        api_mod => ApiMod
+    },
+    couch_eval_server:get_map_context(CtxOpts).
 
 
 -spec return_map_context(context()) -> ok | error().
@@ -37,6 +46,20 @@ return_map_context(Ctx) ->
 
 
 -spec map_docs(context(), [doc()]) -> {ok, result()} | error().
-map_docs(EvalCtx, Docs) ->
-    {ApiMod, Ctx} = EvalCtx,
-    ApiMod:map_docs(Ctx, Docs).
+map_docs(Ctx, Docs) ->
+    #ctx{
+        eval_ctx = EvalCtx,
+        opts = Opts
+    } = Ctx,
+
+    #{api_mod := ApiMod} = Opts,
+    ApiMod:map_docs(EvalCtx, Docs).
+
+
+get_api_mod(Language) when is_binary(Language) ->
+    try
+        ModStr = config:get("couch_eval", "languages", Language),
+        list_to_existing_atom(ModStr)
+    catch error:badarg ->
+        erlang:error({invalid_eval_api_mod, Language})
+    end.

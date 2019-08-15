@@ -9,10 +9,8 @@
 % WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 % License for the specific language governing permissions and limitations under
 
+
 -module(couch_eval_impl).
-
-
--export([]).
 
 
 -include("couch_eval.hrl").
@@ -28,4 +26,4 @@
 -callback return_context(context()) -> ok | error().
 
 
--callback map_docs(context(), docs()) -> {ok, result()} | error().
+-callback map_docs(context(), [doc()]) -> {ok, result()} | error().

@@ -14,10 +14,12 @@
 
 -behaviour(gen_server).
 
+-include_lib("couch_eval.hrl").
+
 
 -export([
     start_link/0,
-    get_map_context/6,
+    get_map_context/1,
     return_map_context/1
 ]).
 
@@ -32,23 +34,24 @@
 ]).
 
 
+-record(client, {
+    pid,
+    from,
+    ctx_id,
+    opts
+}).
+
+
 -define(CONTEXTS, couch_eval_contexts).
--define(CLIENTS, couch_eval_clients).
+-define(ACTIVE, couch_eval_active).
+-define(WAITERS, couch_eval_waiters).
 
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
-get_map_context(DbName, DDocId, Language, Sig, Lib, MapFuns) ->
-    CtxOpts = #{
-        db_name => DbName,
-        ddoc_id => DDocId,
-        language => Language,
-        sig => Sig,
-        lib => Lib,
-        map_funs => MapFuns
-    },
+get_map_context(CtxOpts) ->
     gen_server:call(?MODULE, {get_map_context, CtxOpts}).
 
 
@@ -59,19 +62,21 @@ return_map_context(Ctx) ->
 init([]) ->
     process_flag(trap_exit, true),
     TableOpts = [public, named_table, ordered_set],
-    ets:new(?CONTEXTS, TableOpts),
-    ets:new(?CLIENTS, TableOpts),
+    ets:new(?CONTEXTS, [{keypos, #ctx.id} | TableOpts]),
+    ets:new(?ACTIVE, [{keypos, #client.pid} | TableOpts]),
+    ets:new(?WAITERS, [{keypos, #client.pid} | TableOpts]),
     {ok, #{}}.
 
 
 handle_call({get_map_context, CtxOpts}, From, State) ->
-    get_map_context_for_client(From, CtxOpts),
-    {noreply, State};
+    % get_map_context(From, CtxOpts),
+    % {noreply, State}.
+    {reply, boom, State}.
 
-handle_call({return_map_context, Ctx}, From, State) ->
-    return_context(From, Ctx),
-    State1 = find_next_client_for_context(Ctx, State),
-    {noreply, State1}.
+% handle_call({return_map_context, Ctx}, From, State) ->
+%     return_context(From, Ctx),
+%     find_next_client_for_context(Ctx),
+%     {noreply, State}.
 
 
 handle_cast(_Request, State) ->
@@ -81,14 +86,14 @@ handle_cast(_Request, State) ->
 handle_info(shutdown, State) ->
     {stop, shutdown, State};
 
-handle_info({'EXIT', Pid, Reason}, State) ->
-    couch_log:info("~p ~p died ~p", [?MODULE, Pid, Reason]),
-    State1 = cleanup_down_client(Pid, State),
-    {noreply, State1};
+% handle_info({'EXIT', Pid, Reason}, State) ->
+%     couch_log:info("~p ~p died ~p", [?MODULE, Pid, Reason]),
+%     cleanup_down_client(Pid),
+%     {noreply, State};
 
-handle_info({'DOWN', Ref, _, _, _Reason}, State0) ->
-    State1 = cleanup_down_client(Ref, State0),
-    {noreply, State1};
+% handle_info({'DOWN', Ref, _, _, _Reason}, State) ->
+%     cleanup_down_client(Ref),
+%     {noreply, State};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -104,16 +109,17 @@ code_change(_OldVsn, State, _Extra) ->
 
 %%% Internal functions
 
-get_map_context_for_client(Client, CtxOpts) ->
+get_map_context(From, CtxOpts) ->
     CtxId = get_ctx_id(CtxOpts),
-    add_waiting_client(Client, CtxId, CtxOpts),
+
+    Client = add_waiting(From, CtxId, CtxOpts),
 
     case ets:lookup(?CONTEXTS, CtxId) of
         [] ->
-            EvalCtx = create_context(CtxOpts, CtxId),
-            give_context_to_client(Client, EvalCtx);
-        [{CtxId, waiting, EvalCtx, _}] ->
-            give_context_to_client(Client, EvalCtx);
+            Ctx = create_context(CtxOpts, CtxId),
+            assign_context(Client, Ctx);
+        [#ctx{state = idle} = Ctx] ->
+            assign_context(Client, Ctx);
         [{CtxId, active, _, _}] ->
             ok
     end.
@@ -121,125 +127,139 @@ get_map_context_for_client(Client, CtxOpts) ->
 
 create_context(CtxOpts, CtxId) ->
     #{
-        db_name => DbName,
-        ddoc_id => DDocId,
-        language => Language,
-        sig => Sig,
-        lib => Lib,
-        map_funs => MapFuns
+        db_name := DbName,
+        ddoc_id := DDocId,
+        language := Language,
+        sig := Sig,
+        lib := Lib,
+        map_funs := MapFuns,
+        api_mod := ApiMod
     } = CtxOpts,
 
-    ApiMod = get_api_mod(Language),
-    Ctx = ApiMod:create_map_context(DbName, DDocId, Language, Sig, Lib, MapFuns),
-    EvalCtx = {ApiMod, Ctx},
-    ets:insert(?CONTEXTS, {CtxId, waiting, EvalCtx, CtxOpts}),
-    EvalCtx.
+    EvalCtx = ApiMod:create_map_context(DbName, DDocId, Language, Sig, Lib, MapFuns),
+
+    Ctx = #ctx{
+        id = CtxId,
+        state = idle,
+        eval_ctx = EvalCtx,
+        opts = CtxOpts
+    },
+
+    ets:insert(?CONTEXTS, Ctx),
+    Ctx.
 
 
-get_api_mod(Language) when is_binary(Language) ->
-    try
-        ModStr = config:get("couch_eval", "languages", Language),
-        list_to_existing_atom(ModStr)
-    catch error:badarg ->
-        erlang:error({invalid_eval_api_mod, ModStr})
-    end.
+% destroy_context(EvalCtx) ->
+%     {ApiMod, Ctx} = EvalCtx,
+%     #{
+%         context_id := CtxId
+%     } = Ctx,
+
+%     ApiMod:destroy_context(Ctx),
+
+%     CtxOpts = ets:lookup_element(?CONTEXTS, CtxId, 4),
+%     ets:delete(?CONTEXTS, CtxId),
+
+%     Client = get_next_client(CtxId),
+
+%     if Client == none -> ok; true ->
+%         Ctx = create_context(CtxOpts, CtxId),
+%         give_context_to_client(Client, Ctx)
+%     end.
 
 
-destroy_context(EvalCtx) ->
-    {ApiMod, Ctx} = EvalCtx,
+% return_context(Client, EvalCtx) ->
+%     {ApiMod, Ctx} = EvalCtx,
+
+%     #{
+%         context_id := CtxId
+%     } = Ctx,
+
+%     ApiMod:return_context(Ctx),
+%     ets:update_element(?CONTEXTS, CtxId, {2, waiting}),
+%     ets:delete(?CLIENTS, Client),
+%     ok.
+
+
+% give_context_to_client(Client, EvalCtx) when is_tuple(Client) ->
+%     {Pid, _, _, _} = Client,
+%     give_context_to_client(Pid, EvalCtx);
+
+assign_context(#client{} = Client, Ctx) ->
     #{
         context_id := CtxId
     } = Ctx,
 
-    ApiMod:destroy_context(Ctx),
+    #client{
+        pid = Pid,
+        from = From
+    } = Client,
+    
+    true = ets:delete(?WAITERS, Pid),
+    true = ets:insert(?ACTIVE, Client),
 
-    CtxOpts = ets:lookup_element(?CONTEXTS, CtxId, 4),
-    ets:delete(?CONTEXTS, CtxId),
+    ets:update_element(?CONTEXTS, CtxId, {#ctx.state, active}),
 
-    Client = get_next_client(CtxId),
-
-    if Client == none -> ok; true ->
-        Ctx = create_context(CtxOpts, CtxId),
-        give_context_to_client(Client, Ctx)
-    end.
-
-
-return_context(Client, EvalCtx) ->
-    {ApiMod, Ctx} = EvalCtx,
-
-    #{
-        context_id := CtxId
-    } = Ctx,
-
-    ApiMod:return_context(Ctx),
-    ets:update_element(?CONTEXTS, CtxId, {2, waiting}),
-    ets:delete(?CLIENTS, Client),
-    ok.
+    gen_server:reply(From, {ok, Ctx}).
 
 
-give_context_to_client(Client, EvalCtx) when is_tuple(Client) ->
-    {Pid, _, _, _} = Client,
-    give_context_to_client(Pid, EvalCtx);
+add_waiting(From, CtxId, CtxOpts) ->
+    {Pid, _} = From,
+    erlang:monitor(process, Pid),
 
-give_context_to_client(Client, EvalCtx) ->
-    {_, Ctx} = EvalCtx,
+    Client = #client{
+        pid = Pid,
+        from = From,
+        ctx_id = CtxId,
+        opts = CtxOpts
+    },
 
-    #{
-        context_id := CtxId
-    } = Ctx,
-
-    ets:update_element(?CONTEXTS, CtxId, {2, active}),
-    ets:update_element(?CLIENTS, Client, {4, EvalCtx}),
-    gen_server:reply(Client, {ok, EvalCtx}).
-
-
-add_waiting_client(Client, CtxId, CtxOpts) ->
-    ClientRef = erlang:monitor(process, Client),
-    ets:insert(?CLIENTS, {Client, CtxId, CtxOpts, waiting, ClientRef}).
+    ets:insert(?WAITERS, Client),
+    Client.
 
 
-cleanup_down_client(Ref, State) when is_reference(Ref) ->
-    Client = ets:match_object(?CLIENTS, {'_', '_', '_', '_', Ref}),
-    cleanup_down_client(Client, State);
+% cleanup_down_client(Ref, State) when is_reference(Ref) ->
+%     Client = ets:match_object(?CLIENTS, {'_', '_', '_', '_', Ref}),
+%     cleanup_down_client(Client, State);
 
-cleanup_down_client(Pid, State) when is_pid(Pid) ->
-    Client = ets:lookup(?CLIENTS, Pid),
-    cleanup_down_client(Client, State);
+% cleanup_down_client(Pid, State) when is_pid(Pid) ->
+%     Client = ets:lookup(?CLIENTS, Pid),
+%     cleanup_down_client(Client, State);
 
-cleanup_down_client([], State) ->
-    State;
+% cleanup_down_client([], State) ->
+%     State;
 
-cleanup_down_client([{Pid, _, _, EvalCtx, _}], State) ->
-    ets:delete(?CLIENTS, Pid),
+% cleanup_down_client([{Pid, _, _, EvalCtx, _}], State) ->
+%     ets:delete(?CLIENTS, Pid),
 
-    if EvalCtx == waiting -> ok; true ->
-        destroy_context(EvalCtx)
-    end,
-    State.
-
-
-find_next_client_for_context(EvalCtx, State) ->
-    {_, Ctx} = EvalCtx,
-
-    #{
-        context_id := CtxId
-    } = Ctx,
-
-    Client = get_next_client(CtxId),
-
-    if Client == none -> State; true ->
-        give_context_to_client(Client, EvalCtx)
-    end,
-    State.
+%     if EvalCtx == waiting -> ok; true ->
+%         destroy_context(EvalCtx)
+%     end,
+%     State.
 
 
-get_next_client(CtxId) ->
-    case ets:match_object(?CLIENTS, {'_', CtxId, waiting, '_', '_'}, 1) of
-        '$end_of_table' ->
-            none;
-        {[Client], _} ->
-            Client
-    end.
+% find_next_client_for_context(EvalCtx, State) ->
+%     {_, Ctx} = EvalCtx,
+
+%     #{
+%         context_id := CtxId
+%     } = Ctx,
+
+%     Client = get_next_client(CtxId),
+
+%     if Client == none -> State; true ->
+%         give_context_to_client(Client, EvalCtx)
+%     end,
+%     State.
+
+
+% get_next_client(CtxId) ->
+%     case ets:match_object(?CLIENTS, {'_', CtxId, waiting, '_', '_'}, 1) of
+%         '$end_of_table' ->
+%             none;
+%         {[Client], _} ->
+%             Client
+%     end.
 
 
 get_ctx_id(CtxOpts) when is_map(CtxOpts) ->

@@ -16,7 +16,7 @@
 
 -export([
     get_map_context/6,
-    return_map_context/1,
+    return_context/1,
     map_docs/2
 ]).
 
@@ -40,9 +40,9 @@ get_map_context(DbName, DDocId, Language, Sig, Lib, MapFuns) ->
     couch_eval_server:get_map_context(CtxOpts).
 
 
--spec return_map_context(context()) -> ok | error().
-return_map_context(Ctx) ->
-    couch_eval_server:return_map_context(Ctx).
+-spec return_context(context()) -> ok | error().
+return_context(Ctx) ->
+    couch_eval_server:return_context(Ctx).
 
 
 -spec map_docs(context(), [doc()]) -> {ok, result()} | error().

@@ -14,13 +14,14 @@
 
 -behaviour(gen_server).
 
+
 -include_lib("couch_eval.hrl").
 
 
 -export([
     start_link/0,
     get_map_context/1,
-    return_map_context/1
+    return_context/1
 ]).
 
 
@@ -52,11 +53,11 @@ start_link() ->
 
 
 get_map_context(CtxOpts) ->
-    gen_server:call(?MODULE, {get_map_context, CtxOpts}).
+    gen_server:call(?MODULE, {get_map_context, CtxOpts}, infinity).
 
 
-return_map_context(Ctx) ->
-    gen_server:call(?MODULE, {return_map_context, Ctx}).
+return_context(Ctx) ->
+    gen_server:call(?MODULE, {return_context, Ctx}).
 
 
 init([]) ->
@@ -69,14 +70,13 @@ init([]) ->
 
 
 handle_call({get_map_context, CtxOpts}, From, State) ->
-    % get_map_context(From, CtxOpts),
-    % {noreply, State}.
-    {reply, boom, State}.
+    get_map_context(From, CtxOpts),
+    {noreply, State};
 
-% handle_call({return_map_context, Ctx}, From, State) ->
-%     return_context(From, Ctx),
-%     find_next_client_for_context(Ctx),
-%     {noreply, State}.
+handle_call({return_context, Ctx}, From, State) ->
+    return_context(From, Ctx),
+    find_next_client(Ctx),
+    {reply, ok, State}.
 
 
 handle_cast(_Request, State) ->
@@ -120,15 +120,13 @@ get_map_context(From, CtxOpts) ->
             assign_context(Client, Ctx);
         [#ctx{state = idle} = Ctx] ->
             assign_context(Client, Ctx);
-        [{CtxId, active, _, _}] ->
+        [#ctx{state = active}] ->
             ok
     end.
 
 
 create_context(CtxOpts, CtxId) ->
     #{
-        db_name := DbName,
-        ddoc_id := DDocId,
         language := Language,
         sig := Sig,
         lib := Lib,
@@ -136,7 +134,7 @@ create_context(CtxOpts, CtxId) ->
         api_mod := ApiMod
     } = CtxOpts,
 
-    EvalCtx = ApiMod:create_map_context(DbName, DDocId, Language, Sig, Lib, MapFuns),
+    {ok, EvalCtx} = ApiMod:create_map_context(CtxId, Language, Sig, Lib, MapFuns),
 
     Ctx = #ctx{
         id = CtxId,
@@ -168,26 +166,18 @@ create_context(CtxOpts, CtxId) ->
 %     end.
 
 
-% return_context(Client, EvalCtx) ->
-%     {ApiMod, Ctx} = EvalCtx,
+return_context(From, ClientCtx) ->
+    {Pid, _} = From,
+    #{id := CtxId} = ClientCtx,
 
-%     #{
-%         context_id := CtxId
-%     } = Ctx,
-
-%     ApiMod:return_context(Ctx),
-%     ets:update_element(?CONTEXTS, CtxId, {2, waiting}),
-%     ets:delete(?CLIENTS, Client),
-%     ok.
+    ets:update_element(?CONTEXTS, CtxId, {#ctx.state, idle}),
+    ets:delete(?ACTIVE, Pid),
+    ok.
 
 
-% give_context_to_client(Client, EvalCtx) when is_tuple(Client) ->
-%     {Pid, _, _, _} = Client,
-%     give_context_to_client(Pid, EvalCtx);
-
-assign_context(#client{} = Client, Ctx) ->
-    #{
-        context_id := CtxId
+assign_context(#client{} = Client, #ctx{} = Ctx) ->
+    #ctx{
+        id = CtxId
     } = Ctx,
 
     #client{
@@ -195,12 +185,21 @@ assign_context(#client{} = Client, Ctx) ->
         from = From
     } = Client,
     
+    io:format("assigning ~p ~n ~p ~n", [Client, Ctx]),
     true = ets:delete(?WAITERS, Pid),
     true = ets:insert(?ACTIVE, Client),
 
     ets:update_element(?CONTEXTS, CtxId, {#ctx.state, active}),
 
-    gen_server:reply(From, {ok, Ctx}).
+    #{api_mod := ApiMod} = Ctx#ctx.opts,
+
+    ClientCtx = #{
+        ctx => Ctx#ctx.eval_ctx,
+        id => Ctx#ctx.id,
+        api_mod => ApiMod
+    },
+
+    gen_server:reply(From, {ok, ClientCtx}).
 
 
 add_waiting(From, CtxId, CtxOpts) ->
@@ -238,19 +237,25 @@ add_waiting(From, CtxId, CtxOpts) ->
 %     State.
 
 
-% find_next_client_for_context(EvalCtx, State) ->
-%     {_, Ctx} = EvalCtx,
+find_next_client(ClientCtx) ->
+    #{
+        id := CtxId
+    } = ClientCtx,
 
-%     #{
-%         context_id := CtxId
-%     } = Ctx,
+    case ets:match_object(?WAITERS, #client{ctx_id = CtxId, _='_'}, 1) of
+        '$end_of_table' -> 
+            ok;
+        {[Client], _} ->
+            [Ctx] = ets:lookup(?CONTEXTS, CtxId),
+            assign_context(Client, Ctx)
+    end.
 
-%     Client = get_next_client(CtxId),
+    % Client = get_next_client(CtxId),
 
-%     if Client == none -> State; true ->
-%         give_context_to_client(Client, EvalCtx)
-%     end,
-%     State.
+    % if Client == none -> State; true ->
+    %     give_context_to_client(Client, EvalCtx)
+    % end,
+    % State.
 
 
 % get_next_client(CtxId) ->

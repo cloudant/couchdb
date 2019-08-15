@@ -16,7 +16,7 @@
 -include("couch_eval.hrl").
 
 
--callback create_map_context(language(), sig(), lib(),
+-callback create_map_context(context_id(), language(), sig(), lib(),
     map_funs()) -> {ok, context()} | error().
 
 

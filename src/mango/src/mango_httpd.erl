@@ -287,6 +287,7 @@ handle_doc({add_key, Key, Value}, Acc0) ->
     NewKVs = lists:keystore(Key, 1, KVs, {Key, Value}),
     {ok, Acc0#vacc{kvs = NewKVs}};
 handle_doc({row, Doc}, Acc0) ->
+    chttpd_stats:incr_rows(),
     #vacc{prepend=Prepend} = Acc0,
     Chunk = [Prepend, ?JSON_ENCODE(Doc)],
     maybe_flush_response(Acc0, Chunk, iolist_size(Chunk)).

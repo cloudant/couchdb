@@ -814,6 +814,12 @@ db_req(#httpd{path_parts=[_, DocId | FileNameParts]}=Req, Db) ->
 multi_all_docs_view(Req, Db, OP, Queries) ->
     Args0 = couch_mrview_http:parse_params(Req, undefined),
     Args1 = Args0#mrargs{view_type=map},
+    IsPaginated = is_integer(Args1#mrargs.page_size),
+    CB = case IsPaginated of
+        false -> fun streaming_cb/2;
+        true -> fun paginated_cb/2
+    end,
+    Args1 = Args0#mrargs{view_type=map},
     ArgQueries = lists:map(fun({Query}) ->
         QueryArg1 = couch_mrview_http:parse_params(Query, undefined,
             Args1, [decoded]),
@@ -835,7 +841,7 @@ multi_all_docs_view(Req, Db, OP, Queries) ->
             send_all_docs(Db, Args, Acc0);
         (#mrargs{keys = Keys} = Args, Acc0) when is_list(Keys) ->
             Acc1 = send_all_docs_keys(Db, Args, Acc0),
-            {ok, Acc2} = streaming_cb(complete, Acc1),
+            {ok, Acc2} = CB(complete, Acc1),
             Acc2
     end, VAcc0, ArgQueries),
     {ok, Resp1} = chttpd:send_delayed_chunk(VAcc1#vacc.resp, "\r\n]}"),
@@ -844,6 +850,11 @@ multi_all_docs_view(Req, Db, OP, Queries) ->
 
 all_docs_view(Req, Db, Keys, OP) ->
     Args0 = couch_mrview_http:parse_body_and_query(Req, Keys),
+    IsPaginated = is_integer(Args0#mrargs.page_size),
+    CB = case IsPaginated of
+        false -> fun streaming_cb/2;
+        true -> fun paginated_cb/2
+    end,
     Args1 = Args0#mrargs{view_type=map},
     Args2 = couch_views_util:validate_args(Args1),
     Args3 = set_namespace(OP, Args2),
@@ -859,30 +870,39 @@ all_docs_view(Req, Db, Keys, OP) ->
             {ok, VAcc1#vacc.resp};
         Keys when is_list(Keys) ->
             VAcc1 = send_all_docs_keys(Db, Args3, VAcc0),
-            {ok, VAcc2} = streaming_cb(complete, VAcc1),
+            {ok, VAcc2} = CB(complete, VAcc1),
             {ok, VAcc2#vacc.resp}
     end.
 
 
-send_all_docs(Db, #mrargs{keys = undefined} = Args, VAcc0) ->
+send_all_docs(Db, #mrargs{keys = undefined} = Args, Acc0) ->
     Opts0 = fabric2_util:all_docs_view_opts(Args),
-    Opts = Opts0 ++ [{restart_tx, true}],
-    NS = couch_util:get_value(namespace, Opts),
+    NS = couch_util:get_value(namespace, Opts0),
     FoldFun = case NS of
         <<"_all_docs">> -> fold_docs;
         <<"_design">> -> fold_design_docs;
         <<"_local">> -> fold_local_docs
     end,
-    ViewCb = fun streaming_cb/2,
-    Acc = {iter, Db, Args, VAcc0},
-    {ok, {iter, _, _, VAcc1}} = fabric2_db:FoldFun(Db, ViewCb, Acc, Opts),
-    VAcc1.
+    IsPaginated = is_integer(Args#mrargs.page_size),
+    {ViewCb, Opts, Acc1} = case IsPaginated of
+        false ->
+            {
+                fun streaming_cb/2,
+                Opts0 ++ [{restart_tx, true}],
+                {iter, Db, Args, Acc0}
+            };
+        true ->
+            {fun paginated_cb/2, Opts0, {iter, Db, Args, Acc0}}
+    end,
+    {ok, {iter, _, _, Acc2}} = fabric2_db:FoldFun(Db, ViewCb, Acc1, Opts),
+    Acc2.
 
 
-send_all_docs_keys(Db, #mrargs{} = Args, VAcc0) ->
+send_all_docs_keys(Db, #mrargs{} = Args, Acc0) ->
     Keys = apply_args_to_keylist(Args, Args#mrargs.keys),
     NS = couch_util:get_value(namespace, Args#mrargs.extra),
     TotalRows = fabric2_db:get_doc_count(Db, NS),
+    IsPaginated = is_integer(Args#mrargs.page_size),
     Meta = case Args#mrargs.update_seq of
         true ->
             UpdateSeq = fabric2_db:get_update_seq(Db),
@@ -890,7 +910,10 @@ send_all_docs_keys(Db, #mrargs{} = Args, VAcc0) ->
         false ->
             []
     end ++ [{total, TotalRows}, {offset, null}],
-    {ok, VAcc1} = streaming_cb({meta, Meta}, VAcc0),
+    {ok, Acc1} = case IsPaginated of
+        false -> streaming_cb({meta, Meta}, Acc0);
+        true -> paginated_cb({meta, Meta}, Acc0)
+    end,
     DocOpts = case Args#mrargs.conflicts of
         true -> [conflicts | Args#mrargs.doc_options];
         _ -> Args#mrargs.doc_options
@@ -933,10 +956,13 @@ send_all_docs_keys(Db, #mrargs{} = Args, VAcc0) ->
                 }
         end,
         Row1 = fabric_view:transform_row(Row0),
-        streaming_cb(Row1, Acc)
+        case IsPaginated of
+            false -> streaming_cb(Row1, Acc);
+            true -> paginated_cb(Row1, Acc)
+        end
     end,
-    {ok, VAcc2} = fabric2_db:fold_docs(Db, Keys, CB, VAcc1, OpenOpts),
-    VAcc2.
+    {ok, Acc2} = fabric2_db:fold_docs(Db, Keys, CB, Acc1, OpenOpts),
+    Acc2.
 
 
 apply_args_to_keylist(Args, Keys0) ->
@@ -961,6 +987,25 @@ streaming_cb(Msg0, {iter, _Db, _Args, _VAcc} = Acc0) ->
 streaming_cb(Msg0, Acc0) ->
     {Msg1, Acc1} = view_cb(Msg0, Acc0),
     couch_mrview_http:view_cb(Msg1, Acc1).
+
+
+paginated_cb({row, Row}, {iter, Db, Args, {Meta, Acc}}) ->
+    {ok, {iter, Db, Args, {Meta, [couch_mrview_http:row_to_obj(Row) | Acc]}}};
+
+paginated_cb({meta, Meta}, {iter, Db, Args, {_Meta, Acc}}) ->
+    {ok, {iter, Db, Args, {Meta, Acc}}};
+
+paginated_cb(complete, {iter, Db, Args, {Meta, Acc}}) ->
+    {ok, {iter, Db, Args, {Meta, lists:reverse(Acc)}}};
+
+paginated_cb({row, Row}, {Meta, Acc}) ->
+    {ok, {Meta, [couch_mrview_http:row_to_obj(Row) | Acc]}};
+
+paginated_cb({meta, Meta}, {_Meta, Acc}) ->
+    {ok, {Meta, Acc}};
+
+paginated_cb(complete, {Meta, Acc}) ->
+    {ok, {Meta, lists:reverse(Acc)}}.
 
 
 view_cb({row, Row}, {iter, Db, Args, _VAcc} = Acc) ->

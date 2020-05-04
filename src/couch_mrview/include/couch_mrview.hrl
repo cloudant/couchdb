@@ -81,7 +81,8 @@
     conflicts,
     callback,
     sorted = true,
-    extra = []
+    extra = [],
+    page_size
 }).
 
 -record(vacc, {

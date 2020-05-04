@@ -15,7 +15,8 @@
 
 -export([
     ddoc_to_mrst/2,
-    validate_args/1
+    validate_args/1,
+    validate_args/2
 ]).
 
 
@@ -78,11 +79,13 @@ ddoc_to_mrst(DbName, #doc{id=Id, body={Fields}}) ->
     SigInfo = {Views, Language, DesignOpts, couch_index_util:sort_lib(Lib)},
     {ok, IdxState#mrst{sig=couch_hash:md5_hash(term_to_binary(SigInfo))}}.
 
+validate_args(Args) ->
+    validate_args(Args, []).
 
 % This is mostly a copy of couch_mrview_util:validate_args/1 but it doesn't
 % update start / end keys and also throws a not_implemented error for reduce
 %
-validate_args(#mrargs{} = Args) ->
+validate_args(#mrargs{} = Args, Opts) ->
     GroupLevel = determine_group_level(Args),
     Reduce = Args#mrargs.reduce,
 
@@ -196,6 +199,22 @@ validate_args(#mrargs{} = Args) ->
     case is_boolean(Args#mrargs.sorted) of
         true -> ok;
         _ -> mrverror(<<"Invalid value for `sorted`.">>)
+    end,
+
+    case {Args#mrargs.page_size, couch_util:get_value(page_size, Opts, 0)} of
+        {_, 0} -> ok;
+        {Size, _} when not is_integer(Size) ->
+            mrverror(<<"`page_size` should be an integer">>);
+        {Size, Max} when Size > Max ->
+            MBin = list_to_binary(integer_to_list(Max)),
+            mrverror(<<
+                "Provided `page_size` is greater than the limit ",
+                MBin/binary
+            >>);
+        {Size, _} when Size < 1 ->
+            mrverror(<<"Cannot use limit less then 1">>);
+        _ ->
+            ok
     end,
 
     Args#mrargs{group_level=GroupLevel}.

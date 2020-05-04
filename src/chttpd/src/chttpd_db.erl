@@ -63,6 +63,8 @@
     orelse T == <<"_find">>
     orelse T == <<"_explain">>)).
 
+-define(DEFAULT_PAGE_SIZE, 2000).
+
 % Database request handlers
 handle_request(#httpd{path_parts=[DbName|RestParts],method=Method}=Req)->
     case {Method, RestParts} of
@@ -815,17 +817,23 @@ multi_all_docs_view(Req, Db, OP, Queries) ->
     Args0 = couch_mrview_http:parse_params(Req, undefined),
     Args1 = Args0#mrargs{view_type=map},
     IsPaginated = is_integer(Args1#mrargs.page_size),
-    CB = case IsPaginated of
-        false -> fun streaming_cb/2;
-        true -> fun paginated_cb/2
+    ValidationOpts = case IsPaginated of
+        false ->
+            [];
+        true ->
+            MaxPageSize = config:get_integer(
+                "request_limits", "_all_docs", ?DEFAULT_PAGE_SIZE),
+            [{page_size, MaxPageSize}]
     end,
-    Args1 = Args0#mrargs{view_type=map},
     ArgQueries = lists:map(fun({Query}) ->
         QueryArg1 = couch_mrview_http:parse_params(Query, undefined,
             Args1, [decoded]),
-        QueryArgs2 = couch_views_util:validate_args(QueryArg1),
+        QueryArgs2 = couch_views_util:validate_args(QueryArg1, ValidationOpts),
         set_namespace(OP, QueryArgs2)
     end, Queries),
+    do_multi_all_docs_view(IsPaginated, Req, Db, ArgQueries).
+
+do_multi_all_docs_view(false, Req, Db, ArgQueries) ->
     Max = chttpd:chunked_response_buffer_size(),
     First = "{\"results\":[",
     {ok, Resp0} = chttpd:start_delayed_json_response(Req, 200, [], First),
@@ -841,38 +849,52 @@ multi_all_docs_view(Req, Db, OP, Queries) ->
             send_all_docs(Db, Args, Acc0);
         (#mrargs{keys = Keys} = Args, Acc0) when is_list(Keys) ->
             Acc1 = send_all_docs_keys(Db, Args, Acc0),
-            {ok, Acc2} = CB(complete, Acc1),
+            {ok, Acc2} = streaming_cb(complete, Acc1),
             Acc2
     end, VAcc0, ArgQueries),
     {ok, Resp1} = chttpd:send_delayed_chunk(VAcc1#vacc.resp, "\r\n]}"),
-    chttpd:end_delayed_json_response(Resp1).
+    chttpd:end_delayed_json_response(Resp1);
+
+do_multi_all_docs_view(true, Req, Db, _ArgQueries) ->
+    chttpd_httpd_handlers:not_implemented(Req, Db).
 
 
 all_docs_view(Req, Db, Keys, OP) ->
     Args0 = couch_mrview_http:parse_body_and_query(Req, Keys),
-    IsPaginated = is_integer(Args0#mrargs.page_size),
-    CB = case IsPaginated of
-        false -> fun streaming_cb/2;
-        true -> fun paginated_cb/2
-    end,
     Args1 = Args0#mrargs{view_type=map},
-    Args2 = couch_views_util:validate_args(Args1),
+    IsPaginated = is_integer(Args0#mrargs.page_size),
+    ValidationOpts = case IsPaginated of
+        false ->
+            [];
+        true ->
+            MaxPageSize = config:get_integer(
+                "request_limits", "_all_docs", ?DEFAULT_PAGE_SIZE),
+            [{page_size, MaxPageSize}]
+    end,
+    Args2 = couch_views_util:validate_args(Args1, ValidationOpts),
     Args3 = set_namespace(OP, Args2),
+    do_all_docs_view(IsPaginated, Req, Db, Keys, Args3).
+
+
+do_all_docs_view(false, Req, Db, Keys, Args) ->
     Max = chttpd:chunked_response_buffer_size(),
     VAcc0 = #vacc{
         db = Db,
         req = Req,
         threshold = Max
     },
-    case Args3#mrargs.keys of
+    case Args#mrargs.keys of
         undefined ->
-            VAcc1 = send_all_docs(Db, Args3, VAcc0),
+            VAcc1 = send_all_docs(Db, Args, VAcc0),
             {ok, VAcc1#vacc.resp};
         Keys when is_list(Keys) ->
-            VAcc1 = send_all_docs_keys(Db, Args3, VAcc0),
-            {ok, VAcc2} = CB(complete, VAcc1),
+            VAcc1 = send_all_docs_keys(Db, Args, VAcc0),
+            {ok, VAcc2} = streaming_cb(complete, VAcc1),
             {ok, VAcc2#vacc.resp}
-    end.
+    end;
+
+do_all_docs_view(true, Req, Db, _Keys, _Args3) ->
+    chttpd_httpd_handlers:not_implemented(Req, Db).
 
 
 send_all_docs(Db, #mrargs{keys = undefined} = Args, Acc0) ->

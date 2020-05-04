@@ -835,7 +835,7 @@ multi_all_docs_view(Req, Db, OP, Queries) ->
             send_all_docs(Db, Args, Acc0);
         (#mrargs{keys = Keys} = Args, Acc0) when is_list(Keys) ->
             Acc1 = send_all_docs_keys(Db, Args, Acc0),
-            {ok, Acc2} = view_cb(complete, Acc1),
+            {ok, Acc2} = streaming_cb(complete, Acc1),
             Acc2
     end, VAcc0, ArgQueries),
     {ok, Resp1} = chttpd:send_delayed_chunk(VAcc1#vacc.resp, "\r\n]}"),
@@ -859,7 +859,7 @@ all_docs_view(Req, Db, Keys, OP) ->
             {ok, VAcc1#vacc.resp};
         Keys when is_list(Keys) ->
             VAcc1 = send_all_docs_keys(Db, Args3, VAcc0),
-            {ok, VAcc2} = view_cb(complete, VAcc1),
+            {ok, VAcc2} = streaming_cb(complete, VAcc1),
             {ok, VAcc2#vacc.resp}
     end.
 
@@ -873,7 +873,7 @@ send_all_docs(Db, #mrargs{keys = undefined} = Args, VAcc0) ->
         <<"_design">> -> fold_design_docs;
         <<"_local">> -> fold_local_docs
     end,
-    ViewCb = fun view_cb/2,
+    ViewCb = fun streaming_cb/2,
     Acc = {iter, Db, Args, VAcc0},
     {ok, {iter, _, _, VAcc1}} = fabric2_db:FoldFun(Db, ViewCb, Acc, Opts),
     VAcc1.
@@ -890,7 +890,7 @@ send_all_docs_keys(Db, #mrargs{} = Args, VAcc0) ->
         false ->
             []
     end ++ [{total, TotalRows}, {offset, null}],
-    {ok, VAcc1} = view_cb({meta, Meta}, VAcc0),
+    {ok, VAcc1} = streaming_cb({meta, Meta}, VAcc0),
     DocOpts = case Args#mrargs.conflicts of
         true -> [conflicts | Args#mrargs.doc_options];
         _ -> Args#mrargs.doc_options
@@ -933,7 +933,7 @@ send_all_docs_keys(Db, #mrargs{} = Args, VAcc0) ->
                 }
         end,
         Row1 = fabric_view:transform_row(Row0),
-        view_cb(Row1, Acc)
+        streaming_cb(Row1, Acc)
     end,
     {ok, VAcc2} = fabric2_db:fold_docs(Db, Keys, CB, VAcc1, OpenOpts),
     VAcc2.
@@ -953,8 +953,17 @@ apply_args_to_keylist(Args, Keys0) ->
         false -> Keys2
     end.
 
+streaming_cb(Msg0, {iter, _Db, _Args, _VAcc} = Acc0) ->
+    {Msg1, {iter, Db, Args, VAcc}} = view_cb(Msg0, Acc0),
+    {Go, NewVAcc} = couch_mrview_http:view_cb(Msg1, VAcc),
+    {Go, {iter, Db, Args, NewVAcc}};
 
-view_cb({row, Row}, {iter, Db, Args, VAcc}) ->
+streaming_cb(Msg0, Acc0) ->
+    {Msg1, Acc1} = view_cb(Msg0, Acc0),
+    couch_mrview_http:view_cb(Msg1, Acc1).
+
+
+view_cb({row, Row}, {iter, Db, Args, _VAcc} = Acc) ->
     NewRow = case lists:keymember(doc, 1, Row) of
         true ->
             chttpd_stats:incr_reads(),
@@ -980,12 +989,10 @@ view_cb({row, Row}, {iter, Db, Args, VAcc}) ->
             Row
     end,
     chttpd_stats:incr_rows(),
-    {Go, NewVAcc} = couch_mrview_http:view_cb({row, NewRow}, VAcc),
-    {Go, {iter, Db, Args, NewVAcc}};
+    {{row, NewRow}, Acc};
 
-view_cb(Msg, {iter, Db, Args, VAcc}) ->
-    {Go, NewVAcc} = couch_mrview_http:view_cb(Msg, VAcc),
-    {Go, {iter, Db, Args, NewVAcc}};
+view_cb(Msg, {iter, _Db, _Args, _VAcc} = Acc) ->
+    {Msg, Acc};
 
 view_cb({row, Row} = Msg, Acc) ->
     case lists:keymember(doc, 1, Row) of
@@ -995,10 +1002,10 @@ view_cb({row, Row} = Msg, Acc) ->
             ok
     end,
     chttpd_stats:incr_rows(),
-    couch_mrview_http:view_cb(Msg, Acc);
+    {Msg, Acc};
 
 view_cb(Msg, Acc) ->
-    couch_mrview_http:view_cb(Msg, Acc).
+    {Msg, Acc}.
 
 db_doc_req(#httpd{method='DELETE'}=Req, Db, DocId) ->
     % check for the existence of the doc to handle the 404 case.

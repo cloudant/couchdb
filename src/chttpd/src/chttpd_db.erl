@@ -856,7 +856,7 @@ do_multi_all_docs_view(false, Req, Db, ArgQueries) ->
     chttpd:end_delayed_json_response(Resp1);
 
 do_multi_all_docs_view(true, Req, Db0, Args0) ->
-    chttpd_httpd_handlers:not_implemented(Req, Db).
+    chttpd_httpd_handlers:not_implemented(Req, Db0).
 
 
 all_docs_view(Req, Db, Keys, OP) ->

@@ -856,17 +856,7 @@ do_multi_all_docs_view(false, Req, Db, ArgQueries) ->
     chttpd:end_delayed_json_response(Resp1);
 
 do_multi_all_docs_view(true, Req, Db0, Args0) ->
-    KeyFun = fun({Props}) -> couch_util:get_value(id, Props) end,
-    Response = couch_mrview_http:paginated(Db0, Req, Args0, KeyFun,
-        fun(Db, Args) ->
-            {Meta, Items} = send_all_docs_keys(Db, Args, {[], []}),
-            MetaMap = lists:foldl(fun(MetaData, Acc) ->
-                Acc
-            end, #{}, Meta),
-            {MetaMap, Items}
-        end
-    ),
-    chttpd:send_json(Req, Response).
+    chttpd_httpd_handlers:not_implemented(Req, Db).
 
 
 all_docs_view(Req, Db, Keys, OP) ->

@@ -814,7 +814,7 @@ db_req(#httpd{path_parts=[_, DocId | FileNameParts]}=Req, Db) ->
     db_attachment_req(Req, Db, DocId, FileNameParts).
 
 multi_all_docs_view(Req, Db, OP, Queries) ->
-    Args0 = couch_mrview_http:parse_params(Req, undefined),
+    Args0 = parse_query(Req, undefined),
     Args1 = Args0#mrargs{view_type=map},
     IsPaginated = is_integer(Args1#mrargs.page_size),
     ValidationOpts = case IsPaginated of
@@ -855,12 +855,22 @@ do_multi_all_docs_view(false, Req, Db, ArgQueries) ->
     {ok, Resp1} = chttpd:send_delayed_chunk(VAcc1#vacc.resp, "\r\n]}"),
     chttpd:end_delayed_json_response(Resp1);
 
-do_multi_all_docs_view(true, Req, Db, _ArgQueries) ->
-    chttpd_httpd_handlers:not_implemented(Req, Db).
+do_multi_all_docs_view(true, Req, Db0, Args0) ->
+    KeyFun = fun({Props}) -> couch_util:get_value(id, Props) end,
+    Response = couch_mrview_http:paginated(Db0, Req, Args0, KeyFun,
+        fun(Db, Args) ->
+            {Meta, Items} = send_all_docs_keys(Db, Args, {[], []}),
+            MetaMap = lists:foldl(fun(MetaData, Acc) ->
+                Acc
+            end, #{}, Meta),
+            {MetaMap, Items}
+        end
+    ),
+    chttpd:send_json(Req, Response).
 
 
 all_docs_view(Req, Db, Keys, OP) ->
-    Args0 = couch_mrview_http:parse_body_and_query(Req, Keys),
+    Args0 = parse_body_and_query(Req, Keys),
     Args1 = Args0#mrargs{view_type=map},
     IsPaginated = is_integer(Args0#mrargs.page_size),
     ValidationOpts = case IsPaginated of
@@ -893,8 +903,33 @@ do_all_docs_view(false, Req, Db, Keys, Args) ->
             {ok, VAcc2#vacc.resp}
     end;
 
-do_all_docs_view(true, Req, Db, _Keys, _Args3) ->
-    chttpd_httpd_handlers:not_implemented(Req, Db).
+do_all_docs_view(true, Req, Db0, _Keys, Args0) ->
+    KeyFun = fun({Props}) -> couch_util:get_value(id, Props) end,
+    Response = couch_mrview_http:paginated(Db0, Req, Args0, KeyFun,
+        fun(Db, Args) ->
+            {Meta, Items} = case Args#mrargs.keys of
+                undefined ->
+                    send_all_docs(Db, Args, {[], []});
+                Keys when is_list(Keys) ->
+                    send_all_docs_keys(Db, Args, {[], []})
+            end,
+            MetaMap = lists:foldl(fun(MetaData, Acc) ->
+                case MetaData of
+                    {_Key, undefined} ->
+                        Acc;
+                    {total, Value} ->
+                        maps:put(<<"total_rows">>, Value, Acc);
+                    {Key, null} ->
+                        maps:put(
+                            list_to_binary(atom_to_list(Key)), <<"null">>, Acc);
+                    {Key, Value} ->
+                        maps:put(list_to_binary(atom_to_list(Key)), Value, Acc)
+                end
+            end, #{}, Meta),
+            {MetaMap, Items}
+        end
+    ),
+    chttpd:send_json(Req, Response).
 
 
 send_all_docs(Db, #mrargs{keys = undefined} = Args, Acc0) ->
@@ -2246,3 +2281,29 @@ bulk_get_json_error(DocId, Rev, Error, Reason) ->
                              {<<"rev">>, Rev},
                              {<<"error">>, Error},
                              {<<"reason">>, Reason}]}}]}).
+
+
+parse_query(#httpd{method = 'GET'} = Req, Keys) ->
+    QS = chttpd:qs(Req),
+    parse_body_and_query(Req, QS, Keys).
+
+
+parse_body_and_query(#httpd{method = 'GET'} = Req, Keys) ->
+    QS = chttpd:qs(Req),
+    parse_body_and_query(Req, QS, Keys);
+
+parse_body_and_query(#httpd{method = 'POST'} = Req, Keys) ->
+    {Fields} = chttpd:json_body_obj(Req),
+    parse_body_and_query(Req, Fields, Keys).
+
+
+parse_body_and_query(_Req, [{"bookmark", Bookmark}], _Keys) ->
+    couch_mrview_http:bookmark_decode(Bookmark);
+
+parse_body_and_query(Req, Props, Keys) ->
+    case couch_util:get_value("bookmark", Props, nil) of
+        nil ->
+            couch_mrview_http:parse_body_and_query(Req, Keys);
+        _ ->
+            throw({error, "Cannot use bookmark with other options"})
+    end.

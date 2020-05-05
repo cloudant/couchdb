@@ -82,7 +82,8 @@
     callback,
     sorted = true,
     extra = [],
-    page_size
+    page_size,
+    bookmark=nil
 }).
 
 -record(vacc, {

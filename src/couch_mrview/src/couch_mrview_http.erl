@@ -39,7 +39,10 @@
     row_to_json/2,
     row_to_obj/1,
     row_to_obj/2,
-    check_view_etag/3
+    check_view_etag/3,
+    bookmark_encode/1,
+    bookmark_decode/1,
+    paginated/5
 ]).
 
 -include_lib("couch/include/couch_db.hrl").
@@ -649,3 +652,133 @@ check_view_etag(Sig, Acc0, Req) ->
         true -> throw({etag_match, ETag});
         false -> {ok, Acc0#vacc{etag=ETag}}
     end.
+
+bookmark_encode(Args0) ->
+    {Args, _} = lists:foldl(fun(Value, {Acc, Idx}) ->
+        case element(Idx, Acc) of
+            Value ->
+                {setelement(Idx, Acc, []), Idx + 1};
+            _Default when Idx == #mrargs.bookmark
+                -> {setelement(Idx, Acc, []), Idx + 1};
+            _Default ->
+                {setelement(Idx, Acc, Value), Idx + 1}
+        end
+    end, {#mrargs{}, 1}, tuple_to_list(Args0)),
+    Term = erlang:delete_element(1, Args),
+    Binary = term_to_binary(Term, [compressed, {minor_version, 2}]),
+    couch_util:encodeBase64Url(Binary).
+
+bookmark_decode(Bookmark) ->
+    Binary = couch_util:decodeBase64Url(Bookmark),
+    Term = binary_to_term(Binary, [safe]),
+    {Args, _} = lists:foldl(fun(Value, {Acc, Idx}) ->
+        case {Value, element(Idx, Acc)} of
+            {[], []} ->
+                {Acc, Idx + 1};
+            {[], Default} ->
+                {setelement(Idx, Acc, Default), Idx + 1};
+            {_, _} when Idx == #mrargs.bookmark ->
+                {setelement(Idx, Acc, true), Idx + 1};
+            {Value, _} ->
+                {setelement(Idx, Acc, Value), Idx + 1}
+        end
+    end, {#mrargs{}, 1}, [mrargs | tuple_to_list(Term)]),
+    Args.
+
+paginated(Db, #httpd{} = Req, #mrargs{} = Args0, KeyFun, Fun) ->
+    #httpd{path_parts = Parts} = Req,
+    UpdateSeq = fabric2_db:get_update_seq(Db),
+    Etag = couch_httpd:make_etag({Parts, UpdateSeq, Args0}),
+    {PageSize, Args} = set_limit(Args0),
+    {Response, Items} = chttpd:etag_respond(Req, Etag, fun() ->
+        Fun(Db, Args)
+    end),
+
+    case check_completion(PageSize, Items) of
+        {Rows, nil} ->
+            maps:merge(Response, #{
+                rows => Rows
+             });
+        {Rows, Next} ->
+            NextKey = KeyFun(Next),
+            is_binary(NextKey)
+                orelse throw("Provided KeyFun should return binary"),
+            Bookmark = case Args#mrargs.keys of
+                undefined ->
+                    bookmark_encode(Args#mrargs{start_key=NextKey});
+                Keys when is_list(Keys) ->
+                    NewKeys = lists:foldl(fun(Row, Acc) ->
+                        gb_sets:del_element(KeyFun(Row), Acc)
+                    end, gb_sets:from_list(Keys), Rows),
+                    bookmark_encode(Args#mrargs{keys=gb_sets:to_list(NewKeys)})
+                end,
+            maps:merge(Response, #{
+                rows => Rows,
+                bookmark => Bookmark
+             })
+    end.
+
+
+set_limit(#mrargs{page_size = PageSize, limit = Limit} = Args)
+        when is_integer(PageSize) andalso Limit > PageSize ->
+    {PageSize, Args#mrargs{limit = PageSize + 1}};
+
+set_limit(#mrargs{page_size = PageSize, limit = Limit} = Args)
+        when is_integer(PageSize)  ->
+    {PageSize, Args#mrargs{limit = Limit + 1}}.
+
+
+check_completion(Limit, Items) when length(Items) > Limit ->
+    case lists:split(Limit, Items) of
+        {Head, [NextItem | _]} ->
+            {Head, NextItem};
+        {Head, []} ->
+            {Head, nil}
+    end;
+
+check_completion(_Limit, Items) ->
+    {Items, nil}.
+
+-ifdef(TEST).
+
+-include_lib("eunit/include/eunit.hrl").
+
+bookmark_encode_decode_test() ->
+    ?assertEqual(#mrargs{page_size = 5},
+        bookmark_decode(bookmark_encode(#mrargs{page_size = 5}))).
+
+check_completion_test() ->
+    ?assertEqual(
+        {[], nil},
+        check_completion(1, [])
+    ),
+    ?assertEqual(
+        {[1], nil},
+        check_completion(1, [1])
+    ),
+    ?assertEqual(
+        {[1], 2},
+        check_completion(1, [1, 2])
+    ),
+    ?assertEqual(
+        {[1], 2},
+        check_completion(1, [1, 2, 3])
+    ),
+    ?assertEqual(
+        {[1, 2], nil},
+        check_completion(3, [1, 2])
+    ),
+    ?assertEqual(
+        {[1, 2, 3], nil},
+        check_completion(3, [1, 2, 3])
+    ),
+    ?assertEqual(
+        {[1, 2, 3], 4},
+        check_completion(3, [1, 2, 3, 4])
+    ),
+    ?assertEqual(
+        {[1, 2, 3], 4},
+        check_completion(3, [1, 2, 3, 4, 5])
+    ),
+    ok.
+-endif.

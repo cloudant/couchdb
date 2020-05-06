@@ -814,26 +814,22 @@ db_req(#httpd{path_parts=[_, DocId | FileNameParts]}=Req, Db) ->
     db_attachment_req(Req, Db, DocId, FileNameParts).
 
 multi_all_docs_view(Req, Db, OP, Queries) ->
-    Args0 = parse_query(Req, undefined),
+    Args0 = parse_params(Req, undefined),
     Args1 = Args0#mrargs{view_type=map},
-    IsPaginated = is_integer(Args1#mrargs.page_size),
-    ValidationOpts = case IsPaginated of
+    case is_integer(Args1#mrargs.page_size) of
         false ->
-            [];
+            stream_multi_all_docs_view(Req, Db, Args1, OP, Queries);
         true ->
-            MaxPageSize = config:get_integer(
-                "request_limits", "_all_docs", ?DEFAULT_PAGE_SIZE),
-            [{page_size, MaxPageSize}]
-    end,
+            paginate_multi_all_docs_view(Req, Db, Args1, OP, Queries)
+    end.
+
+stream_multi_all_docs_view(Req, Db, Args, OP, Queries) ->
     ArgQueries = lists:map(fun({Query}) ->
         QueryArg1 = couch_mrview_http:parse_params(Query, undefined,
-            Args1, [decoded]),
-        QueryArgs2 = couch_views_util:validate_args(QueryArg1, ValidationOpts),
+            Args, [decoded]),
+        QueryArgs2 = couch_views_util:validate_args(QueryArg1),
         set_namespace(OP, QueryArgs2)
     end, Queries),
-    do_multi_all_docs_view(IsPaginated, Req, Db, ArgQueries).
-
-do_multi_all_docs_view(false, Req, Db, ArgQueries) ->
     Max = chttpd:chunked_response_buffer_size(),
     First = "{\"results\":[",
     {ok, Resp0} = chttpd:start_delayed_json_response(Req, 200, [], First),
@@ -853,10 +849,26 @@ do_multi_all_docs_view(false, Req, Db, ArgQueries) ->
             Acc2
     end, VAcc0, ArgQueries),
     {ok, Resp1} = chttpd:send_delayed_chunk(VAcc1#vacc.resp, "\r\n]}"),
-    chttpd:end_delayed_json_response(Resp1);
+    chttpd:end_delayed_json_response(Resp1).
 
-do_multi_all_docs_view(true, Req, Db0, Args0) ->
-    chttpd_httpd_handlers:not_implemented(Req, Db0).
+paginate_multi_all_docs_view(Req, Db, Args0, OP, Queries) ->
+    ArgQueries = lists:map(fun({Query}) ->
+        QueryArgs1 = couch_mrview_http:parse_params(Query, undefined,
+            Args0#mrargs{page_size = max_page_size()}, [decoded]),
+        {MaxPageSize, QueryArgs2} = maybe_set_page_size(QueryArgs1),
+        QueryArgs3 = couch_views_util:validate_args(
+            QueryArgs2, [{page_size, MaxPageSize}]),
+        set_namespace(OP, QueryArgs3)
+    end, Queries),
+    KeyFun = fun({Props}) -> couch_util:get_value(id, Props) end,
+    #mrargs{page_size = PageSize} = Args0,
+    #httpd{path_parts = Parts} = Req,
+    UpdateSeq = fabric2_db:get_update_seq(Db),
+    EtagTerm = {Parts, UpdateSeq, Args0},
+    Response = couch_mrview_http:paginated(
+        Req, EtagTerm, PageSize, ArgQueries, KeyFun,
+        fun(Args) -> all_docs_paginated_cb(Db, Args) end),
+    chttpd:send_json(Req, Response).
 
 
 all_docs_view(Req, Db, Keys, OP) ->
@@ -867,9 +879,7 @@ all_docs_view(Req, Db, Keys, OP) ->
         false ->
             [];
         true ->
-            MaxPageSize = config:get_integer(
-                "request_limits", "_all_docs", ?DEFAULT_PAGE_SIZE),
-            [{page_size, MaxPageSize}]
+            [{page_size, max_page_size()}]
     end,
     Args2 = couch_views_util:validate_args(Args1, ValidationOpts),
     Args3 = set_namespace(OP, Args2),
@@ -893,33 +903,38 @@ do_all_docs_view(false, Req, Db, Keys, Args) ->
             {ok, VAcc2#vacc.resp}
     end;
 
-do_all_docs_view(true, Req, Db0, _Keys, Args0) ->
+do_all_docs_view(true, Req, Db, _Keys, Args0) ->
     KeyFun = fun({Props}) -> couch_util:get_value(id, Props) end,
-    Response = couch_mrview_http:paginated(Db0, Req, Args0, KeyFun,
-        fun(Db, Args) ->
-            {Meta, Items} = case Args#mrargs.keys of
-                undefined ->
-                    send_all_docs(Db, Args, {[], []});
-                Keys when is_list(Keys) ->
-                    send_all_docs_keys(Db, Args, {[], []})
-            end,
-            MetaMap = lists:foldl(fun(MetaData, Acc) ->
-                case MetaData of
-                    {_Key, undefined} ->
-                        Acc;
-                    {total, Value} ->
-                        maps:put(<<"total_rows">>, Value, Acc);
-                    {Key, null} ->
-                        maps:put(
-                            list_to_binary(atom_to_list(Key)), <<"null">>, Acc);
-                    {Key, Value} ->
-                        maps:put(list_to_binary(atom_to_list(Key)), Value, Acc)
-                end
-            end, #{}, Meta),
-            {MetaMap, Items}
-        end
-    ),
+    #httpd{path_parts = Parts} = Req,
+    UpdateSeq = fabric2_db:get_update_seq(Db),
+    EtagTerm = {Parts, UpdateSeq, Args0},
+    Response = couch_mrview_http:paginated(
+        Req, EtagTerm, Args0, KeyFun,
+        fun(Args) -> all_docs_paginated_cb(Db, Args) end),
     chttpd:send_json(Req, Response).
+
+all_docs_paginated_cb(Db, Args) ->
+    {Meta, Items} = case Args#mrargs.keys of
+        undefined ->
+            send_all_docs(Db, Args, {[], []});
+        Keys when is_list(Keys) ->
+            send_all_docs_keys(Db, Args, {[], []})
+        end,
+    MetaMap = lists:foldl(fun(MetaData, Acc) ->
+        case MetaData of
+            {_Key, undefined} ->
+                Acc;
+            {total, Value} ->
+                %%maps:put(<<"total_rows">>, Value, Acc);
+                Acc;
+            {Key, null} ->
+                maps:put(
+                    list_to_binary(atom_to_list(Key)), <<"null">>, Acc);
+            {Key, Value} ->
+                maps:put(list_to_binary(atom_to_list(Key)), Value, Acc)
+            end
+        end, #{}, Meta),
+    {MetaMap, Items}.
 
 
 send_all_docs(Db, #mrargs{keys = undefined} = Args, Acc0) ->
@@ -2273,9 +2288,18 @@ bulk_get_json_error(DocId, Rev, Error, Reason) ->
                              {<<"reason">>, Reason}]}}]}).
 
 
-parse_query(#httpd{method = 'GET'} = Req, Keys) ->
+parse_params(#httpd{} = Req, Keys) ->
     QS = chttpd:qs(Req),
-    parse_body_and_query(Req, QS, Keys).
+    parse_params(QS, Keys);
+parse_params([{"bookmark", Bookmark}], _Keys) ->
+    couch_mrview_http:bookmark_decode(Bookmark);
+parse_params(Props, Keys) ->
+    case couch_util:get_value("bookmark", Props, nil) of
+        nil ->
+            couch_mrview_http:parse_params(Props, Keys);
+        _ ->
+            throw({error, "Cannot use bookmark with other options"})
+    end.
 
 
 parse_body_and_query(#httpd{method = 'GET'} = Req, Keys) ->
@@ -2297,3 +2321,12 @@ parse_body_and_query(Req, Props, Keys) ->
         _ ->
             throw({error, "Cannot use bookmark with other options"})
     end.
+
+max_page_size() ->
+    config:get_integer("request_limits", "_all_docs", ?DEFAULT_PAGE_SIZE).
+
+maybe_set_page_size(#mrargs{page_size = undefined} = Args) ->
+    MaxPageSize = max_page_size(),
+    {MaxPageSize, Args#mrargs{page_size = MaxPageSize}};
+maybe_set_page_size(#mrargs{} = Args) ->
+    {max_page_size(), Args}.

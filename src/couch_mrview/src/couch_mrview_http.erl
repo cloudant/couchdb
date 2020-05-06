@@ -42,7 +42,9 @@
     check_view_etag/3,
     bookmark_encode/1,
     bookmark_decode/1,
-    paginated/5
+    paginated/5,
+    paginated/6,
+    set_limit/1
 ]).
 
 -include_lib("couch/include/couch_db.hrl").
@@ -685,19 +687,49 @@ bookmark_decode(Bookmark) ->
     end, {#mrargs{}, 1}, [mrargs | tuple_to_list(Term)]),
     Args.
 
-paginated(Db, #httpd{} = Req, #mrargs{} = Args0, KeyFun, Fun) ->
-    #httpd{path_parts = Parts} = Req,
-    UpdateSeq = fabric2_db:get_update_seq(Db),
-    Etag = couch_httpd:make_etag({Parts, UpdateSeq, Args0}),
-    {PageSize, Args} = set_limit(Args0),
-    {Response, Items} = chttpd:etag_respond(Req, Etag, fun() ->
-        Fun(Db, Args)
-    end),
+paginated(Req, EtagTerm, #mrargs{page_size = PageSize} = Args, KeyFun, Fun) ->
+    Etag = couch_httpd:make_etag(EtagTerm),
+    chttpd:etag_respond(Req, Etag, fun() ->
+        hd(paginated(PageSize, [set_limit(Args)], KeyFun, Fun))
+    end).
 
-    case check_completion(PageSize, Items) of
+paginated(Req, EtagTerm, PageSize, QueriesArgs, KeyFun, Fun) when is_list(QueriesArgs) ->
+    Etag = couch_httpd:make_etag(EtagTerm),
+    chttpd:etag_respond(Req, Etag, fun() ->
+        Results = paginated(PageSize, QueriesArgs, KeyFun, Fun),
+        #{results => Results}
+    end).
+
+paginated(PageSize, QueriesArgs, KeyFun, Fun) when is_list(QueriesArgs) ->
+    {_N, Results} = lists:foldr(fun(Args0, {Limit, Acc}) ->
+        case Limit > 0 of
+            true ->
+                Args = set_limit(Args0#mrargs{page_size = Limit}),
+                {Meta, Items} = Fun(Args),
+                Result = maybe_add_bookmark(
+                    PageSize, Args, Meta, Items, KeyFun),
+                #{total_rows := Total} = Result,
+                {Limit - Total, [Result | Acc]};
+            false ->
+                Bookmark = bookmark_encode(Args0),
+                Result = #{
+                    rows => [],
+                    bookmark => Bookmark,
+                    total_rows => 0
+                },
+                {Limit, [Result | Acc]}
+        end
+    end, {PageSize, []}, QueriesArgs),
+    Results.
+
+maybe_add_bookmark(PageSize, Args0, Response, Items, KeyFun) ->
+    #mrargs{page_size = Limit} = Args0,
+    Args = Args0#mrargs{page_size = PageSize},
+    case check_completion(Limit, Items) of
         {Rows, nil} ->
             maps:merge(Response, #{
-                rows => Rows
+                rows => Rows,
+                total_rows => length(Rows)
              });
         {Rows, Next} ->
             NextKey = KeyFun(Next),
@@ -714,18 +746,19 @@ paginated(Db, #httpd{} = Req, #mrargs{} = Args0, KeyFun, Fun) ->
                 end,
             maps:merge(Response, #{
                 rows => Rows,
-                bookmark => Bookmark
+                bookmark => Bookmark,
+                total_rows => length(Rows)
              })
     end.
 
 
 set_limit(#mrargs{page_size = PageSize, limit = Limit} = Args)
         when is_integer(PageSize) andalso Limit > PageSize ->
-    {PageSize, Args#mrargs{limit = PageSize + 1}};
+    Args#mrargs{limit = PageSize + 1};
 
 set_limit(#mrargs{page_size = PageSize, limit = Limit} = Args)
         when is_integer(PageSize)  ->
-    {PageSize, Args#mrargs{limit = Limit + 1}}.
+    Args#mrargs{limit = Limit + 1}.
 
 
 check_completion(Limit, Items) when length(Items) > Limit ->

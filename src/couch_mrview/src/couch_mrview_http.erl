@@ -714,7 +714,7 @@ paginated(PageSize, QueriesArgs, KeyFun, Fun) when is_list(QueriesArgs) ->
                 Bookmark = bookmark_encode(Args0),
                 Result = #{
                     rows => [],
-                    bookmark => Bookmark,
+                    next => Bookmark,
                     total_rows => 0
                 },
                 {Limit, [Result | Acc]}
@@ -746,7 +746,7 @@ maybe_add_bookmark(PageSize, Args0, Response, Items, KeyFun) ->
                 end,
             maps:merge(Response, #{
                 rows => Rows,
-                bookmark => Bookmark,
+                next => Bookmark,
                 total_rows => length(Rows)
              })
     end.

@@ -902,26 +902,12 @@ do_all_docs_view(true, Req, Db, _Keys, Args0) ->
     chttpd:send_json(Req, Response).
 
 all_docs_paginated_cb(Db, Args) ->
-    {Meta, Items} = case Args#mrargs.keys of
+    #vacc{meta=MetaMap, buffer=Items} = case Args#mrargs.keys of
         undefined ->
-            send_all_docs(Db, Args, {[], []});
+            send_all_docs(Db, Args, #vacc{paginated=true});
         Keys when is_list(Keys) ->
-            send_all_docs_keys(Db, Args, {[], []})
+            send_all_docs_keys(Db, Args, #vacc{paginated=true})
         end,
-    MetaMap = lists:foldl(fun(MetaData, Acc) ->
-        case MetaData of
-            {_Key, undefined} ->
-                Acc;
-            {total, Value} ->
-                %%maps:put(<<"total_rows">>, Value, Acc);
-                Acc;
-            {Key, null} ->
-                maps:put(
-                    list_to_binary(atom_to_list(Key)), <<"null">>, Acc);
-            {Key, Value} ->
-                maps:put(list_to_binary(atom_to_list(Key)), Value, Acc)
-            end
-        end, #{}, Meta),
     {MetaMap, Items}.
 
 
@@ -1039,23 +1025,12 @@ streaming_cb(Msg0, Acc0) ->
     couch_mrview_http:view_cb(Msg1, Acc1).
 
 
-paginated_cb({row, Row}, {iter, Db, Args, {Meta, Acc}}) ->
-    {ok, {iter, Db, Args, {Meta, [couch_mrview_http:row_to_obj(Row) | Acc]}}};
+paginated_cb(Msg, #vacc{} = VAcc) ->
+    couch_mrview_http:view_cb(Msg, VAcc);
 
-paginated_cb({meta, Meta}, {iter, Db, Args, {_Meta, Acc}}) ->
-    {ok, {iter, Db, Args, {Meta, Acc}}};
-
-paginated_cb(complete, {iter, Db, Args, {Meta, Acc}}) ->
-    {ok, {iter, Db, Args, {Meta, lists:reverse(Acc)}}};
-
-paginated_cb({row, Row}, {Meta, Acc}) ->
-    {ok, {Meta, [couch_mrview_http:row_to_obj(Row) | Acc]}};
-
-paginated_cb({meta, Meta}, {_Meta, Acc}) ->
-    {ok, {Meta, Acc}};
-
-paginated_cb(complete, {Meta, Acc}) ->
-    {ok, {Meta, lists:reverse(Acc)}}.
+paginated_cb(Msg, {iter, Db, Args, VAcc0}) ->
+    {ok, VAcc1} = paginated_cb(Msg, VAcc0),
+    {ok, {iter, Db, Args, VAcc1}}.
 
 
 view_cb({row, Row}, {iter, Db, Args, _VAcc} = Acc) ->

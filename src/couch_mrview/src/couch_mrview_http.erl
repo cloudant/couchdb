@@ -328,32 +328,36 @@ filtered_view_cb({row, Row0}, Acc) ->
 filtered_view_cb(Obj, Acc) ->
     view_cb(Obj, Acc).
 
+view_cb(Msg, #vacc{paginated = false}=Acc) ->
+    streaming_cb(Msg, Acc);
+view_cb(Msg, #vacc{paginated = true}=Acc) ->
+    paginated_cb(Msg, Acc).
 
 %% these clauses start (and possibly end) the response
-view_cb({error, Reason}, #vacc{resp=undefined}=Acc) ->
+streaming_cb({error, Reason}, #vacc{resp=undefined}=Acc) ->
     {ok, Resp} = chttpd:send_error(Acc#vacc.req, Reason),
     {ok, Acc#vacc{resp=Resp}};
 
-view_cb(complete, #vacc{resp=undefined}=Acc) ->
+streaming_cb(complete, #vacc{resp=undefined}=Acc) ->
     % Nothing in view
     {ok, Resp} = chttpd:send_json(Acc#vacc.req, 200, {[{rows, []}]}),
     {ok, Acc#vacc{resp=Resp}};
 
-view_cb(Msg, #vacc{resp=undefined}=Acc) ->
+streaming_cb(Msg, #vacc{resp=undefined}=Acc) ->
     %% Start response
     Headers = [],
     {ok, Resp} = chttpd:start_delayed_json_response(Acc#vacc.req, 200, Headers),
-    view_cb(Msg, Acc#vacc{resp=Resp, should_close=true});
+    streaming_cb(Msg, Acc#vacc{resp=Resp, should_close=true});
 
 %% ---------------------------------------------------
 
 %% From here on down, the response has been started.
 
-view_cb({error, Reason}, #vacc{resp=Resp}=Acc) ->
+streaming_cb({error, Reason}, #vacc{resp=Resp}=Acc) ->
     {ok, Resp1} = chttpd:send_delayed_error(Resp, Reason),
     {ok, Acc#vacc{resp=Resp1}};
 
-view_cb(complete, #vacc{resp=Resp, buffer=Buf, threshold=Max}=Acc) ->
+streaming_cb(complete, #vacc{resp=Resp, buffer=Buf, threshold=Max}=Acc) ->
     % Finish view output and possibly end the response
     {ok, Resp1} = chttpd:close_delayed_json_object(Resp, Buf, "\r\n]}", Max),
     case Acc#vacc.should_close of
@@ -365,7 +369,7 @@ view_cb(complete, #vacc{resp=Resp, buffer=Buf, threshold=Max}=Acc) ->
                 prepend=",\r\n", buffer=[], bufsize=0}}
     end;
 
-view_cb({meta, Meta}, #vacc{meta_sent=false, row_sent=false}=Acc) ->
+streaming_cb({meta, Meta}, #vacc{meta_sent=false, row_sent=false}=Acc) ->
     % Sending metadata as we've not sent it or any row yet
     Parts = case couch_util:get_value(total, Meta) of
         undefined -> [];
@@ -386,20 +390,47 @@ view_cb({meta, Meta}, #vacc{meta_sent=false, row_sent=false}=Acc) ->
     {ok, AccOut} = maybe_flush_response(Acc, Chunk, iolist_size(Chunk)),
     {ok, AccOut#vacc{prepend="", meta_sent=true}};
 
-view_cb({meta, _Meta}, #vacc{}=Acc) ->
+streaming_cb({meta, _Meta}, #vacc{}=Acc) ->
     %% ignore metadata
     {ok, Acc};
 
-view_cb({row, Row}, #vacc{meta_sent=false}=Acc) ->
+streaming_cb({row, Row}, #vacc{meta_sent=false}=Acc) ->
     %% sorted=false and row arrived before meta
     % Adding another row
     Chunk = [prepend_val(Acc), "{\"rows\":[\r\n", row_to_json(Row)],
     maybe_flush_response(Acc#vacc{meta_sent=true, row_sent=true}, Chunk, iolist_size(Chunk));
 
-view_cb({row, Row}, #vacc{meta_sent=true}=Acc) ->
+streaming_cb({row, Row}, #vacc{meta_sent=true}=Acc) ->
     % Adding another row
     Chunk = [prepend_val(Acc), row_to_json(Row)],
     maybe_flush_response(Acc#vacc{row_sent=true}, Chunk, iolist_size(Chunk)).
+
+
+paginated_cb({row, Row}, #vacc{buffer=Buf}=Acc) ->
+    {ok, Acc#vacc{buffer = [row_to_obj(Row) | Buf]}};
+
+paginated_cb({error, Reason}, #vacc{}=_Acc) ->
+    throw({error, Reason});
+
+paginated_cb(complete, #vacc{buffer=Buf}=Acc) ->
+    {ok, Acc#vacc{buffer=lists:reverse(Buf)}};
+
+paginated_cb({meta, Meta}, #vacc{}=VAcc) ->
+    MetaMap = lists:foldl(fun(MetaData, Acc) ->
+        case MetaData of
+            {_Key, undefined} ->
+                Acc;
+            {total, _Value} ->
+                %% We set total_rows elsewere
+                Acc;
+            {Key, null} ->
+                maps:put(
+                    list_to_binary(atom_to_list(Key)), <<"null">>, Acc);
+            {Key, Value} ->
+                maps:put(list_to_binary(atom_to_list(Key)), Value, Acc)
+            end
+        end, #{}, Meta),
+    {ok, VAcc#vacc{meta=MetaMap}}.
 
 
 maybe_flush_response(#vacc{bufsize=Size, threshold=Max} = Acc, Data, Len)

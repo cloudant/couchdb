@@ -244,6 +244,38 @@ defmodule Couch.Test.Pagination do
         ids = Enum.map(resp.body["rows"], fn row -> row["id"] end)
         assert doc_ids == ids
       end
+
+      test "range between start_key and end_key works", ctx do
+        head_pos = 2
+        slice_size = 3
+        doc_ids = Enum.sort(Enum.map(ctx.docs, fn doc -> doc["id"] end))
+        # -1 due to 0 based indexing
+        # -2 is due to 0 based indexing and inclusive end
+        slice = Enum.slice(doc_ids, (head_pos - 1)..(head_pos + slice_size - 2))
+
+        {start_key, end_key, doc_ids} =
+          if ctx.descending do
+            reversed = Enum.reverse(slice)
+            [first | _] = reversed
+            [last | _] = slice
+            {~s("#{first}"), ~s("#{last}"), reversed}
+          else
+            [first | _] = slice
+            [last | _] = Enum.reverse(slice)
+            {~s("#{first}"), ~s("#{last}"), slice}
+          end
+
+        assert length(doc_ids) == slice_size
+
+        resp =
+          Couch.Session.get(ctx.session, "/#{ctx.db_name}/_all_docs",
+            query: %{descending: ctx.descending, start_key: start_key, end_key: end_key}
+          )
+
+        assert resp.status_code == 200
+        ids = Enum.map(resp.body["rows"], fn row -> row["id"] end)
+        assert doc_ids == ids
+      end
     end
   end
 
@@ -285,6 +317,15 @@ defmodule Couch.Test.Pagination do
           assert body["total_rows"] == length(body["rows"])
           assert body["total_rows"] <= ctx.page_size
         end
+      end
+
+      describe "Pagination API (10 docs) : _all_docs?page_size=#{n}&descending=#{
+                 descending
+               } : range" do
+        @describetag n_docs: 10
+        @describetag descending: descending
+        @describetag page_size: n
+        setup [:with_session, :random_db, :with_docs]
 
         test "start_key is respected", ctx do
           head_pos = 2
@@ -327,6 +368,38 @@ defmodule Couch.Test.Pagination do
           resp =
             Couch.Session.get(ctx.session, "/#{ctx.db_name}/_all_docs",
               query: %{descending: ctx.descending, end_key: end_key}
+            )
+
+          assert resp.status_code == 200
+          ids = Enum.map(resp.body["rows"], fn row -> row["id"] end)
+          assert doc_ids == ids
+        end
+
+        test "range between start_key and end_key works", ctx do
+          head_pos = 2
+          slice_size = 3
+          doc_ids = Enum.sort(Enum.map(ctx.docs, fn doc -> doc["id"] end))
+          # -1 due to 0 based indexing
+          # -2 is due to 0 based indexing and inclusive end
+          slice = Enum.slice(doc_ids, (head_pos - 1)..(head_pos + slice_size - 2))
+
+          {start_key, end_key, doc_ids} =
+            if ctx.descending do
+              reversed = Enum.reverse(slice)
+              [first | _] = reversed
+              [last | _] = slice
+              {~s("#{first}"), ~s("#{last}"), reversed}
+            else
+              [first | _] = slice
+              [last | _] = Enum.reverse(slice)
+              {~s("#{first}"), ~s("#{last}"), slice}
+            end
+
+          assert length(doc_ids) == slice_size
+
+          resp =
+            Couch.Session.get(ctx.session, "/#{ctx.db_name}/_all_docs",
+              query: %{descending: ctx.descending, start_key: start_key, end_key: end_key}
             )
 
           assert resp.status_code == 200

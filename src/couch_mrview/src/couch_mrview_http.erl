@@ -693,7 +693,7 @@ parse_queries(Req, #mrargs{page_size = PageSize} = Args0, Queries)
         couch_views_util:validate_args(Args2, [{page_size, MaxPageSize}])
     end, Queries);
 
-parse_queries(Req, #mrargs{} = Args, Queries) ->
+parse_queries(_Req, #mrargs{} = Args, Queries) ->
     lists:map(fun({Query}) ->
         Args1 = parse_params(Query, undefined, Args, [decoded]),
         couch_views_util:validate_args(Args1)

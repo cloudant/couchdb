@@ -473,7 +473,7 @@ parse_params(Props, Keys) ->
 parse_params(Props, Keys, Args) ->
     parse_params(Props, Keys, Args, []).
 
-parse_params([{"bookmark", Bookmark}], Keys, #mrargs{}=Args0, Options) ->
+parse_params([{"bookmark", Bookmark}], _Keys, #mrargs{}, _Options) ->
     bookmark_decode(Bookmark);
 
 parse_params(Props, Keys, #mrargs{}=Args0, Options) ->

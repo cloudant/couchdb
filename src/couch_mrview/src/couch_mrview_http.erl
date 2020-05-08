@@ -467,7 +467,13 @@ parse_params(Props, Keys) ->
 parse_params(Props, Keys, Args) ->
     parse_params(Props, Keys, Args, []).
 
+parse_params([{"bookmark", Bookmark}], Keys, #mrargs{}=Args0, Options) ->
+    bookmark_decode(Bookmark);
+
 parse_params(Props, Keys, #mrargs{}=Args0, Options) ->
+    Bookmark = couch_util:get_value("bookmark", Props, nil),
+    Bookmark == nil
+        orelse throw({error, "Cannot use bookmark with other options"}),
     IsDecoded = lists:member(decoded, Options),
     Args1 = case lists:member(keep_group_level, Options) of
         true ->

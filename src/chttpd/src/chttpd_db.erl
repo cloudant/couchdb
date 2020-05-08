@@ -814,7 +814,7 @@ db_req(#httpd{path_parts=[_, DocId | FileNameParts]}=Req, Db) ->
     db_attachment_req(Req, Db, DocId, FileNameParts).
 
 multi_all_docs_view(Req, Db, OP, Queries) ->
-    Args0 = parse_params(Req, undefined),
+    Args0 = couch_mrview_http:parse_params(Req, undefined),
     Args1 = Args0#mrargs{view_type=map},
     case is_integer(Args1#mrargs.page_size) of
         false ->
@@ -872,7 +872,7 @@ paginate_multi_all_docs_view(Req, Db, Args0, OP, Queries) ->
 
 
 all_docs_view(Req, Db, Keys, OP) ->
-    Args0 = parse_body_and_query(Req, Keys),
+    Args0 = couch_mrview_http:parse_body_and_query(Req, Keys),
     Args1 = Args0#mrargs{view_type=map},
     IsPaginated = is_integer(Args0#mrargs.page_size),
     ValidationOpts = case IsPaginated of
@@ -2286,41 +2286,6 @@ bulk_get_json_error(DocId, Rev, Error, Reason) ->
                              {<<"rev">>, Rev},
                              {<<"error">>, Error},
                              {<<"reason">>, Reason}]}}]}).
-
-
-parse_params(#httpd{} = Req, Keys) ->
-    QS = chttpd:qs(Req),
-    parse_params(QS, Keys);
-parse_params([{"bookmark", Bookmark}], _Keys) ->
-    couch_mrview_http:bookmark_decode(Bookmark);
-parse_params(Props, Keys) ->
-    case couch_util:get_value("bookmark", Props, nil) of
-        nil ->
-            couch_mrview_http:parse_params(Props, Keys);
-        _ ->
-            throw({error, "Cannot use bookmark with other options"})
-    end.
-
-
-parse_body_and_query(#httpd{method = 'GET'} = Req, Keys) ->
-    QS = chttpd:qs(Req),
-    parse_body_and_query(Req, QS, Keys);
-
-parse_body_and_query(#httpd{method = 'POST'} = Req, Keys) ->
-    {Fields} = chttpd:json_body_obj(Req),
-    parse_body_and_query(Req, Fields, Keys).
-
-
-parse_body_and_query(_Req, [{"bookmark", Bookmark}], _Keys) ->
-    couch_mrview_http:bookmark_decode(Bookmark);
-
-parse_body_and_query(Req, Props, Keys) ->
-    case couch_util:get_value("bookmark", Props, nil) of
-        nil ->
-            couch_mrview_http:parse_body_and_query(Req, Keys);
-        _ ->
-            throw({error, "Cannot use bookmark with other options"})
-    end.
 
 max_page_size() ->
     config:get_integer("request_limits", "_all_docs", ?DEFAULT_PAGE_SIZE).

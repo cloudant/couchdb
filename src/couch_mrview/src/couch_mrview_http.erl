@@ -839,7 +839,7 @@ set_limit(#mrargs{page_size = PageSize, limit = Limit} = Args)
 
 maybe_set_page_size(#mrargs{page_size = undefined} = Args, MaxPageSize) ->
     Args#mrargs{page_size = MaxPageSize};
-maybe_set_page_size(#mrargs{} = Args, MaxPageSize) ->
+maybe_set_page_size(#mrargs{} = Args, _MaxPageSize) ->
     Args.
 
 

@@ -868,15 +868,9 @@ paginate_multi_all_docs_view(Req, Db, Args0, OP, Queries) ->
 all_docs_view(Req, Db, Keys, OP) ->
     Args0 = couch_mrview_http:parse_body_and_query(Req, Keys),
     Args1 = Args0#mrargs{view_type=map},
-    IsPaginated = couch_mrview_http:is_paginated(Args1),
-    ValidationOpts = case IsPaginated of
-        false ->
-            [];
-        true ->
-            [{page_size, max_page_size()}]
-    end,
-    Args2 = couch_views_util:validate_args(Args1, ValidationOpts),
+    Args2 = couch_mrview_http:validate_args(Req, Args1),
     Args3 = set_namespace(OP, Args2),
+    IsPaginated = couch_mrview_http:is_paginated(Args3),
     do_all_docs_view(IsPaginated, Req, Db, Keys, Args3).
 
 
@@ -2280,7 +2274,4 @@ bulk_get_json_error(DocId, Rev, Error, Reason) ->
                              {<<"rev">>, Rev},
                              {<<"error">>, Error},
                              {<<"reason">>, Reason}]}}]}).
-
-max_page_size() ->
-    config:get_integer("request_limits", "_all_docs", ?DEFAULT_PAGE_SIZE).
 

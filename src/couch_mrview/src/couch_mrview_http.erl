@@ -41,6 +41,7 @@
     row_to_obj/1,
     row_to_obj/2,
     check_view_etag/3,
+    validate_args/2,
     is_paginated/1,
     bookmark_encode/1,
     bookmark_decode/1,
@@ -672,6 +673,14 @@ is_paginated(#mrargs{page_size = PageSize}) when is_integer(PageSize) ->
 
 is_paginated(_) ->
     false.
+
+
+validate_args(Req, #mrargs{page_size = PageSize} = Args) when is_integer(PageSize) ->
+    MaxPageSize = max_page_size(Req),
+    couch_views_util:validate_args(Args, [{page_size, MaxPageSize}]);
+
+validate_args(_Req, #mrargs{} = Args) ->
+    couch_views_util:validate_args(Args, []).
 
 
 parse_queries(Req, #mrargs{page_size = PageSize} = Args0, Queries)

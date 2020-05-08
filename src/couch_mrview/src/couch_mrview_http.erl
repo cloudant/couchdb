@@ -40,6 +40,7 @@
     row_to_obj/1,
     row_to_obj/2,
     check_view_etag/3,
+    is_paginated/1,
     bookmark_encode/1,
     bookmark_decode/1,
     paginated/5,
@@ -660,6 +661,11 @@ check_view_etag(Sig, Acc0, Req) ->
         true -> throw({etag_match, ETag});
         false -> {ok, Acc0#vacc{etag=ETag}}
     end.
+
+is_paginated(#mrargs{page_size = PageSize}) when is_integer(PageSize) ->
+    true;
+is_paginated(_) ->
+    false.
 
 bookmark_encode(Args0) ->
     {Args, _} = lists:foldl(fun(Value, {Acc, Idx}) ->

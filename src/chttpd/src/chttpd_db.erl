@@ -816,7 +816,7 @@ db_req(#httpd{path_parts=[_, DocId | FileNameParts]}=Req, Db) ->
 multi_all_docs_view(Req, Db, OP, Queries) ->
     Args0 = couch_mrview_http:parse_params(Req, undefined),
     Args1 = Args0#mrargs{view_type=map},
-    case is_integer(Args1#mrargs.page_size) of
+    case couch_mrview_http:is_paginated(Args1) of
         false ->
             stream_multi_all_docs_view(Req, Db, Args1, OP, Queries);
         true ->
@@ -874,7 +874,7 @@ paginate_multi_all_docs_view(Req, Db, Args0, OP, Queries) ->
 all_docs_view(Req, Db, Keys, OP) ->
     Args0 = couch_mrview_http:parse_body_and_query(Req, Keys),
     Args1 = Args0#mrargs{view_type=map},
-    IsPaginated = is_integer(Args0#mrargs.page_size),
+    IsPaginated = couch_mrview_http:is_paginated(Args1),
     ValidationOpts = case IsPaginated of
         false ->
             [];
@@ -945,7 +945,7 @@ send_all_docs(Db, #mrargs{keys = undefined} = Args, Acc0) ->
         <<"_design">> -> fold_design_docs;
         <<"_local">> -> fold_local_docs
     end,
-    IsPaginated = is_integer(Args#mrargs.page_size),
+    IsPaginated = couch_mrview_http:is_paginated(Args),
     {ViewCb, Opts, Acc1} = case IsPaginated of
         false ->
             {
@@ -964,7 +964,7 @@ send_all_docs_keys(Db, #mrargs{} = Args, Acc0) ->
     Keys = apply_args_to_keylist(Args, Args#mrargs.keys),
     NS = couch_util:get_value(namespace, Args#mrargs.extra),
     TotalRows = fabric2_db:get_doc_count(Db, NS),
-    IsPaginated = is_integer(Args#mrargs.page_size),
+    IsPaginated = couch_mrview_http:is_paginated(Args),
     Meta = case Args#mrargs.update_seq of
         true ->
             UpdateSeq = fabric2_db:get_update_seq(Db),

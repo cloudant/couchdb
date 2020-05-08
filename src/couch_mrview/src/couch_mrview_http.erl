@@ -31,6 +31,7 @@
     prepend_val/1,
     parse_body_and_query/2,
     parse_body_and_query/3,
+    parse_queries/3,
     parse_params/2,
     parse_params/3,
     parse_params/4,
@@ -50,6 +51,9 @@
 
 -include_lib("couch/include/couch_db.hrl").
 -include_lib("couch_mrview/include/couch_mrview.hrl").
+
+-define(DEFAULT_ALL_DOCS_PAGE_SIZE, 2000).
+-define(DEFAULT_VIEWS_PAGE_SIZE, 2000).
 
 
 handle_all_docs_req(#httpd{method='GET'}=Req, Db) ->
@@ -662,10 +666,30 @@ check_view_etag(Sig, Acc0, Req) ->
         false -> {ok, Acc0#vacc{etag=ETag}}
     end.
 
+
 is_paginated(#mrargs{page_size = PageSize}) when is_integer(PageSize) ->
     true;
+
 is_paginated(_) ->
     false.
+
+
+parse_queries(Req, #mrargs{page_size = PageSize} = Args0, Queries)
+        when is_integer(PageSize) ->
+    MaxPageSize = max_page_size(Req),
+    Args = Args0#mrargs{page_size = MaxPageSize},
+    lists:map(fun({Query}) ->
+        Args1 = parse_params(Query, undefined, Args, [decoded]),
+        Args2 = maybe_set_page_size(Args1, MaxPageSize),
+        couch_views_util:validate_args(Args2, [{page_size, MaxPageSize}])
+    end, Queries);
+
+parse_queries(Req, #mrargs{} = Args, Queries) ->
+    lists:map(fun({Query}) ->
+        Args1 = parse_params(Query, undefined, Args, [decoded]),
+        couch_views_util:validate_args(Args1)
+    end, Queries).
+
 
 bookmark_encode(Args0) ->
     {Args, _} = lists:foldl(fun(Value, {Acc, Idx}) ->
@@ -773,6 +797,12 @@ set_limit(#mrargs{page_size = PageSize, limit = Limit} = Args)
     Args#mrargs{limit = Limit + 1}.
 
 
+maybe_set_page_size(#mrargs{page_size = undefined} = Args, MaxPageSize) ->
+    Args#mrargs{page_size = MaxPageSize};
+maybe_set_page_size(#mrargs{} = Args, MaxPageSize) ->
+    Args.
+
+
 check_completion(Limit, Items) when length(Items) > Limit ->
     case lists:split(Limit, Items) of
         {Head, [NextItem | _]} ->
@@ -783,6 +813,22 @@ check_completion(Limit, Items) when length(Items) > Limit ->
 
 check_completion(_Limit, Items) ->
     {Items, nil}.
+
+max_page_size(#httpd{path_parts=[_Db, <<"_all_docs">> | _]}) ->
+    config:get_integer(
+        "request_limits", "_all_docs", ?DEFAULT_ALL_DOCS_PAGE_SIZE);
+
+max_page_size(#httpd{path_parts=[_Db, <<"_local_docs">> | _]}) ->
+    config:get_integer(
+        "request_limits", "_all_docs", ?DEFAULT_ALL_DOCS_PAGE_SIZE);
+
+max_page_size(#httpd{path_parts=[_Db, <<"_design_docs">> | _]}) ->
+    config:get_integer(
+        "request_limits", "_all_docs", ?DEFAULT_ALL_DOCS_PAGE_SIZE);
+
+max_page_size(#httpd{path_parts=[_Db, <<"_design">>, _DDocName, <<"_view">> | _]}) ->
+    config:get_integer(
+        "request_limits", "views", ?DEFAULT_VIEWS_PAGE_SIZE).
 
 -ifdef(TEST).
 

@@ -824,12 +824,10 @@ multi_all_docs_view(Req, Db, OP, Queries) ->
     end.
 
 stream_multi_all_docs_view(Req, Db, Args, OP, Queries) ->
-    ArgQueries = lists:map(fun({Query}) ->
-        QueryArg1 = couch_mrview_http:parse_params(Query, undefined,
-            Args, [decoded]),
-        QueryArgs2 = couch_views_util:validate_args(QueryArg1),
-        set_namespace(OP, QueryArgs2)
-    end, Queries),
+    ArgQueries0 = couch_mrview_http:parse_queries(Req, Args, Queries),
+    ArgQueries = lists:map(fun(ArgQ) ->
+        set_namespace(OP, ArgQ)
+    end, ArgQueries0),
     Max = chttpd:chunked_response_buffer_size(),
     First = "{\"results\":[",
     {ok, Resp0} = chttpd:start_delayed_json_response(Req, 200, [], First),
@@ -852,14 +850,10 @@ stream_multi_all_docs_view(Req, Db, Args, OP, Queries) ->
     chttpd:end_delayed_json_response(Resp1).
 
 paginate_multi_all_docs_view(Req, Db, Args0, OP, Queries) ->
-    ArgQueries = lists:map(fun({Query}) ->
-        QueryArgs1 = couch_mrview_http:parse_params(Query, undefined,
-            Args0#mrargs{page_size = max_page_size()}, [decoded]),
-        {MaxPageSize, QueryArgs2} = maybe_set_page_size(QueryArgs1),
-        QueryArgs3 = couch_views_util:validate_args(
-            QueryArgs2, [{page_size, MaxPageSize}]),
-        set_namespace(OP, QueryArgs3)
-    end, Queries),
+    ArgQueries0 = couch_mrview_http:parse_queries(Req, Args0, Queries),
+    ArgQueries = lists:map(fun(ArgQ) ->
+        set_namespace(OP, ArgQ)
+    end, ArgQueries0),
     KeyFun = fun({Props}) -> couch_util:get_value(id, Props) end,
     #mrargs{page_size = PageSize} = Args0,
     #httpd{path_parts = Parts} = Req,
@@ -2290,8 +2284,3 @@ bulk_get_json_error(DocId, Rev, Error, Reason) ->
 max_page_size() ->
     config:get_integer("request_limits", "_all_docs", ?DEFAULT_PAGE_SIZE).
 
-maybe_set_page_size(#mrargs{page_size = undefined} = Args) ->
-    MaxPageSize = max_page_size(),
-    {MaxPageSize, Args#mrargs{page_size = MaxPageSize}};
-maybe_set_page_size(#mrargs{} = Args) ->
-    {max_page_size(), Args}.

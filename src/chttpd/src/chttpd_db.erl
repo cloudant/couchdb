@@ -63,8 +63,6 @@
     orelse T == <<"_find">>
     orelse T == <<"_explain">>)).
 
--define(DEFAULT_PAGE_SIZE, 2000).
-
 % Database request handlers
 handle_request(#httpd{path_parts=[DbName|RestParts],method=Method}=Req)->
     case {Method, RestParts} of

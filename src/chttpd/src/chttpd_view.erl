@@ -17,7 +17,16 @@
 -export([handle_view_req/3]).
 
 multi_query_view(Req, Db, DDoc, ViewName, Queries) ->
-    Args0 = couch_mrview_http:parse_params(Req, undefined),
+    Args = couch_mrview_http:parse_params(Req, undefined),
+    case couch_mrview_http:is_paginated(Args) of
+        false ->
+            stream_multi_query_view(Req, Db, Args, DDoc, ViewName, Queries);
+        true ->
+            paginate_multi_query_view(Req, Db, Args, DDoc, ViewName, Queries)
+    end.
+
+
+stream_multi_query_view(Req, Db, Args0, DDoc, ViewName, Queries) ->
     {ok, #mrst{views=Views}} = couch_mrview_util:ddoc_to_mrst(Db, DDoc),
     Args1 = couch_mrview_util:set_view_type(Args0, ViewName, Views),
     ArgQueries = lists:map(fun({Query}) ->
@@ -38,6 +47,29 @@ multi_query_view(Req, Db, DDoc, ViewName, Queries) ->
     {ok, Resp1} = chttpd:send_delayed_chunk(VAcc2#vacc.resp, "\r\n]}"),
     chttpd:end_delayed_json_response(Resp1).
 
+
+paginate_multi_query_view(Req, Db, Args0, DDoc, ViewName, Queries) ->
+    {ok, #mrst{views=Views}} = couch_mrview_util:ddoc_to_mrst(Db, DDoc),
+    Args1 = couch_mrview_util:set_view_type(Args0, ViewName, Views),
+    ArgQueries0 = couch_mrview_http:parse_queries(Req, Args1, Queries),
+    ArgQueries = lists:map(fun(ArgQ) ->
+        couch_mrview_util:set_view_type(ArgQ, ViewName, Views)
+    end, ArgQueries0),
+    KeyFun = fun({Props}) -> couch_util:get_value(id, Props) end,
+    #mrargs{page_size = PageSize} = Args1,
+    #httpd{path_parts = Parts} = Req,
+    UpdateSeq = fabric2_db:get_update_seq(Db),
+    EtagTerm = {Parts, UpdateSeq, Args1},
+    Response = couch_mrview_http:paginated(
+        Req, EtagTerm, PageSize, ArgQueries, KeyFun,
+        fun(Args) ->
+           {ok, #vacc{meta=MetaMap, buffer=Items}} = couch_views:query(
+               Db, DDoc, ViewName, fun view_cb/2, #vacc{paginated=true}, Args),
+           {MetaMap, Items}
+        end),
+    chttpd:send_json(Req, Response).
+
+
 design_doc_post_view(Req, Props, Db, DDoc, ViewName, Keys) ->
     Args = couch_mrview_http:parse_body_and_query(Req, Props, Keys),
     fabric_query_view(Db, Req, DDoc, ViewName, Args).
@@ -47,12 +79,36 @@ design_doc_view(Req, Db, DDoc, ViewName, Keys) ->
     fabric_query_view(Db, Req, DDoc, ViewName, Args).
 
 fabric_query_view(Db, Req, DDoc, ViewName, Args) ->
+    case couch_mrview_http:is_paginated(Args) of
+        false ->
+            stream_fabric_query_view(Db, Req, DDoc, ViewName, Args);
+        true ->
+            paginate_fabric_query_view(Db, Req, DDoc, ViewName, Args)
+    end.
+
+
+stream_fabric_query_view(Db, Req, DDoc, ViewName, Args) ->
     Max = chttpd:chunked_response_buffer_size(),
     Fun = fun view_cb/2,
     VAcc = #vacc{db=Db, req=Req, threshold=Max},
     {ok, Resp} = couch_views:query(Db, DDoc, ViewName, Fun, VAcc, Args),
     {ok, Resp#vacc.resp}.
 
+
+paginate_fabric_query_view(Db, Req, DDoc, ViewName, Args0) ->
+    KeyFun = fun({Props}) -> couch_util:get_value(id, Props) end,
+    #httpd{path_parts = Parts} = Req,
+    UpdateSeq = fabric2_db:get_update_seq(Db),
+    ETagTerm = {Parts, UpdateSeq, Args0},
+    Response = couch_mrview_http:paginated(
+        Req, ETagTerm, Args0, KeyFun,
+        fun(Args) ->
+            VAcc0 = #vacc{paginated=true},
+            {ok, VAcc1} = couch_views:query(Db, DDoc, ViewName, fun view_cb/2, VAcc0, Args),
+            #vacc{meta=Meta, buffer=Items} = VAcc1,
+            {Meta, Items}
+        end),
+    chttpd:send_json(Req, Response).
 
 view_cb({row, Row} = Msg, Acc) ->
     case lists:keymember(doc, 1, Row) of

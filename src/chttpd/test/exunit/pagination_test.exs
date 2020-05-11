@@ -15,7 +15,9 @@ defmodule Couch.Test.Pagination do
   end
 
   setup_all do
-    test_ctx = :test_util.start_couch([:chttpd])
+    test_ctx =
+      :test_util.start_couch([:chttpd, :couch_jobs, :couch_views, :couch_eval, :couch_js])
+
     :ok = create_admin("adm", "pass")
 
     on_exit(fn ->
@@ -48,6 +50,22 @@ defmodule Couch.Test.Pagination do
   defp with_docs(context) do
     assert Map.has_key?(context, :n_docs), "Please define '@describetag n_docs: 10'"
     %{docs: create_docs(context.session, context.db_name, 1..context.n_docs)}
+  end
+
+  defp with_view(context) do
+    ddoc_id = "simple"
+
+    ddoc = %{
+      _id: "_design/#{ddoc_id}",
+      views: %{
+        all: %{
+          map: "function(doc) { emit(doc.string, doc) }"
+        }
+      }
+    }
+
+    create_doc(context.session, context.db_name, ddoc)
+    %{view_name: "all", ddoc_id: ddoc_id}
   end
 
   defp all_docs(context) do
@@ -608,6 +626,300 @@ defmodule Couch.Test.Pagination do
 
           resp =
             Couch.Session.post(ctx.session, "/#{ctx.db_name}/_all_docs/queries",
+              body: :jiffy.encode(%{queries: queries})
+            )
+
+          assert resp.status_code == 200
+
+          Enum.each(resp.body["results"], fn result ->
+            assert length(result["rows"]) > ctx.page_size
+          end)
+        end
+      end
+    end
+  end
+
+  describe "Legacy API (10 docs) : /{db}/_design/{ddoc}/_view" do
+    @describetag n_docs: 10
+    @describetag descending: false
+    @describetag page_size: 4
+    setup [:with_session, :random_db, :with_view, :with_docs]
+
+    test "total_rows matches the length of rows array", ctx do
+      resp =
+        Couch.Session.get(
+          ctx.session,
+          "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}",
+          query: %{descending: ctx.descending}
+        )
+
+      assert resp.status_code == 200
+      body = resp.body
+      assert body["total_rows"] == length(body["rows"])
+    end
+  end
+
+  for descending <- [false, true] do
+    for n <- [4, 9] do
+      describe "Pagination API (10 docs) : /{db}/_design/{ddoc}/_view?page_size=#{n}&descending=#{
+                 descending
+               }" do
+        @describetag n_docs: 10
+        @describetag descending: descending
+        @describetag page_size: n
+        setup [:with_session, :random_db, :with_view, :with_docs]
+
+        test "should return 'next' bookmark", ctx do
+          resp =
+            Couch.Session.get(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}",
+              query: %{page_size: ctx.page_size, descending: ctx.descending}
+            )
+
+          assert resp.status_code == 200
+          assert Map.has_key?(resp.body, "next")
+        end
+
+        test "total_rows matches the length of rows array", ctx do
+          resp =
+            Couch.Session.get(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}",
+              query: %{page_size: ctx.page_size, descending: ctx.descending}
+            )
+
+          assert resp.status_code == 200
+          body = resp.body
+          assert body["total_rows"] == length(body["rows"])
+        end
+
+        test "total_rows matches the requested page_size", ctx do
+          resp =
+            Couch.Session.get(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}",
+              query: %{page_size: ctx.page_size, descending: ctx.descending}
+            )
+
+          assert resp.status_code == 200
+          assert resp.body["total_rows"] == ctx.page_size
+        end
+
+        test "can use 'next' bookmark to get remaining results", ctx do
+          resp =
+            Couch.Session.get(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}",
+              query: %{page_size: ctx.page_size, descending: ctx.descending}
+            )
+
+          bookmark = resp.body["next"]
+
+          resp =
+            Couch.Session.get(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}",
+              query: %{bookmark: bookmark}
+            )
+
+          assert resp.status_code == 200
+          body = resp.body
+          assert body["total_rows"] == length(body["rows"])
+          assert body["total_rows"] <= ctx.page_size
+        end
+      end
+    end
+  end
+
+  for n <- 10..11 do
+    describe "Pagination API (10 docs) :  /{db}/_design/{ddoc}/_view?page_size=#{n}" do
+      @describetag n_docs: 10
+      @describetag descending: false
+      @describetag page_size: n
+      setup [:with_session, :random_db, :with_view, :with_docs]
+
+      test "should not return 'next' bookmark", ctx do
+        resp =
+          Couch.Session.get(
+            ctx.session,
+            "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}",
+            query: %{page_size: ctx.page_size, descending: ctx.descending}
+          )
+
+        assert resp.status_code == 200
+        assert not Map.has_key?(resp.body, "next")
+      end
+
+      test "total_rows matches the length of rows array", ctx do
+        resp =
+          Couch.Session.get(
+            ctx.session,
+            "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}",
+            query: %{page_size: ctx.page_size, descending: ctx.descending}
+          )
+
+        assert resp.status_code == 200
+        body = resp.body
+        assert body["total_rows"] == length(body["rows"])
+      end
+
+      test "total_rows less than the requested page_size", ctx do
+        resp =
+          Couch.Session.get(
+            ctx.session,
+            "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}",
+            query: %{page_size: ctx.page_size, descending: ctx.descending}
+          )
+
+        assert resp.status_code == 200
+        assert resp.body["total_rows"] <= ctx.page_size
+      end
+    end
+  end
+
+  for descending <- [false, true] do
+    for n <- [4, 9] do
+      describe "Pagination API (10 docs) : /{db}/_design/{ddoc}/_view/queries?page_size=#{
+                 n
+               }&descending=#{descending} : pages" do
+        @describetag n_docs: 10
+        @describetag descending: descending
+        @describetag page_size: n
+
+        @describetag queries: %{
+                       queries: [
+                         %{
+                           keys: [
+                             "002",
+                             "004"
+                           ]
+                         },
+                         %{
+                           limit: n + 1,
+                           skip: 2,
+                           page_size: n
+                         }
+                       ]
+                     }
+        setup [:with_session, :random_db, :with_view, :with_docs]
+
+        test "one of the results contains 'next' bookmark", ctx do
+          resp =
+            Couch.Session.post(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}/queries",
+              query: %{page_size: ctx.page_size, descending: ctx.descending},
+              body: :jiffy.encode(ctx.queries)
+            )
+
+          assert resp.status_code == 200
+          results = resp.body["results"]
+          assert Enum.any?(results, fn result -> Map.has_key?(result, "next") end)
+        end
+
+        test "each 'next' bookmark is working", ctx do
+          resp =
+            Couch.Session.post(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}/queries",
+              query: %{page_size: ctx.page_size, descending: ctx.descending},
+              body: :jiffy.encode(ctx.queries)
+            )
+
+          assert resp.status_code == 200
+          results = resp.body["results"]
+
+          bookmarks =
+            results
+            |> Enum.filter(fn result -> Map.has_key?(result, "next") end)
+            |> Enum.map(fn result -> Map.get(result, "next") end)
+
+          assert [] != bookmarks
+
+          Enum.each(bookmarks, fn bookmark ->
+            resp =
+              Couch.Session.get(
+                ctx.session,
+                "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}",
+                query: %{bookmark: bookmark}
+              )
+
+            assert resp.status_code == 200
+            assert [] != resp.body["rows"]
+          end)
+
+          assert Enum.any?(results, fn result -> Map.has_key?(result, "next") end)
+        end
+
+        test "can post bookmarks to queries", ctx do
+          resp =
+            Couch.Session.post(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}/queries",
+              query: %{page_size: ctx.page_size, descending: ctx.descending},
+              body: :jiffy.encode(ctx.queries)
+            )
+
+          assert resp.status_code == 200
+          results = resp.body["results"]
+
+          queries =
+            results
+            |> Enum.filter(fn result -> Map.has_key?(result, "next") end)
+            |> Enum.map(fn result -> %{bookmark: Map.get(result, "next")} end)
+
+          resp =
+            Couch.Session.post(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}/queries",
+              body: :jiffy.encode(%{queries: queries})
+            )
+
+          assert resp.status_code == 200
+
+          Enum.each(resp.body["results"], fn result ->
+            assert [] != result["rows"]
+          end)
+        end
+
+        test "respect request page_size", ctx do
+          resp =
+            Couch.Session.post(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}/queries",
+              query: %{page_size: ctx.page_size, descending: ctx.descending},
+              body: :jiffy.encode(ctx.queries)
+            )
+
+          assert resp.status_code == 200
+          results = resp.body["results"]
+
+          Enum.each(results ++ resp.body["results"], fn result ->
+            assert length(result["rows"]) <= ctx.page_size
+          end)
+        end
+
+        test "independent page_size in the bookmark", ctx do
+          resp =
+            Couch.Session.post(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}/queries",
+              query: %{page_size: ctx.page_size, descending: ctx.descending},
+              body: :jiffy.encode(ctx.queries)
+            )
+
+          assert resp.status_code == 200
+
+          queries =
+            resp.body["results"]
+            |> Enum.filter(fn result -> Map.has_key?(result, "next") end)
+            |> Enum.map(fn result -> %{bookmark: Map.get(result, "next")} end)
+
+          resp =
+            Couch.Session.post(
+              ctx.session,
+              "/#{ctx.db_name}/_design/#{ctx.ddoc_id}/_view/#{ctx.view_name}/queries",
               body: :jiffy.encode(%{queries: queries})
             )
 

@@ -763,11 +763,25 @@ bookmark_decode(Bookmark) ->
     end, {#mrargs{}, 1}, [mrargs | tuple_to_list(Term)]),
     Args.
 
+paginated(Req, EtagFun, #mrargs{page_size = PageSize} = Args, KeyFun, Fun)
+        when is_function(EtagFun) ->
+    couch_httpd:etag_maybe(Req, fun() ->
+        hd(paginated(PageSize, [set_limit(Args)], KeyFun, Fun))
+    end);
+
 paginated(Req, EtagTerm, #mrargs{page_size = PageSize} = Args, KeyFun, Fun) ->
     Etag = couch_httpd:make_etag(EtagTerm),
     chttpd:etag_respond(Req, Etag, fun() ->
         hd(paginated(PageSize, [set_limit(Args)], KeyFun, Fun))
     end).
+
+paginated(Req, EtagFun, PageSize, QueriesArgs, KeyFun, Fun)
+        when is_function(EtagFun) andalso is_list(QueriesArgs) ->
+    couch_httpd:etag_maybe(Req, fun() ->
+        Results = paginated(PageSize, QueriesArgs, KeyFun, Fun),
+        #{results => Results}
+    end);
+
 
 paginated(Req, EtagTerm, PageSize, QueriesArgs, KeyFun, Fun) when is_list(QueriesArgs) ->
     Etag = couch_httpd:make_etag(EtagTerm),

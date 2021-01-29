@@ -3,6 +3,7 @@
 +*.lib
 +*.dll
 +*.d/
+priv/tracer/*.d
 +
 +ebin/
 +.eunit

@@ -1,0 +1,63 @@
+%% Licensed under the Apache License, Version 2.0 (the "License"); you may not
+%% use this file except in compliance with the License. You may obtain a copy of
+%% the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+%% WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+%% License for the specific language governing permissions and limitations under
+%% the License.
+
+PortSpecs = [
+    {
+        "darwin",
+        "priv/cutil_tracer.so", ["priv/tracer/*.c"],
+        [{env, [{"CFLAGS",  "-O3 -std=c99 -finline-functions -Wall -Wmissing-prototypes"}]}]
+    },
+    {
+        "linux",
+        "priv/cutil_tracer.so", ["priv/tracer/*.c"],
+        [{env, [{"CFLAGS",  "-O3 -std=c99 -arch x86_64 -finline-functions -Wall -Wmissing-prototypes"}]}]
+    },
+    {
+        "bsd",
+        "priv/cutil_tracer.so", ["priv/tracer/*.c"],
+        [{env, [{"CFLAGS",  "-O3 -std=c99 -finline-functions -Wall -Wmissing-prototypes"}]}]
+    },
+    {
+        "win32",
+        "priv/cutil_tracer.so", ["priv/tracer/*.c"],
+        [{env, [{"CFLAGS",  "-fPIC -O3 -std=c99 -finline-functions -Wall -Wmissing-prototypes"}]}]
+    }
+].
+
+
+PlatformDefines = [
+   {platform_define, "win32", 'WINDOWS'}
+].
+
+ErlOpts = case os:getenv("ERL_OPTS") of
+    false ->
+        PlatformDefines;
+    Opts ->
+        PlatformDefines ++ [list_to_atom(O) || O <- string:tokens(Opts, ",")]
+end.
+
+AddConfig = [
+    {port_specs, PortSpecs},
+    {erl_opts, ErlOpts ++ [
+        {i, "../"}
+    ]},
+    {eunit_compile_opts, PlatformDefines}
+].
+
+lists:foldl(fun({K, V}, CfgAcc) ->
+    case lists:keyfind(K, 1, CfgAcc) of
+        {K, Existent} when is_list(Existent) andalso is_list(V) ->
+            lists:keystore(K, 1, CfgAcc, {K, Existent ++ V});
+        false ->
+            lists:keystore(K, 1, CfgAcc, {K, V})
+    end
+end, CONFIG, AddConfig).

@@ -1,18 +1,16 @@
 // Copyright (c) 2017-Present Pivotal Software, Inc.  All rights reserved.
 //
-// This package, Looking Glass, is double-licensed under the Mozilla
-// Public License 1.1 ("MPL") and the Apache License version 2
-// ("ASL"). For the MPL, please see LICENSE-MPL-RabbitMQ. For the ASL,
-// please see LICENSE-APACHE2.
+// This file was taken from Looking Glass, which is double-licensed under
+//
+// the Mozilla Public License 1.1 ("MPL") and the Apache License version 2
+// ("ASL").
 //
 // This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND,
 // either express or implied. See the LICENSE file for specific language governing
 // rights and limitations of this software.
 //
-// If you have any questions regarding licensing, please contact us at
-// info@rabbitmq.com.
 
-#define NIF_FUNCTION_NAME(f) lg_ ## f
+#define NIF_FUNCTION_NAME(f) cutil_tracer_ ## f
 
 #include "nif_helpers.h"
 
@@ -252,4 +250,4 @@ static ErlNifFunc nif_funcs[] = {
     NIF_FUNCTIONS(NIF_FUNCTION_ARRAY)
 };
 
-ERL_NIF_INIT(lg_tracer, nif_funcs, load, NULL, upgrade, unload)
+ERL_NIF_INIT(cutil_tracer, nif_funcs, load, NULL, upgrade, unload)

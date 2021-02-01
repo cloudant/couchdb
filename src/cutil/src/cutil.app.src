@@ -1,0 +1,15 @@
+{application, cutil,
+ [{description, "A set of miscellaneous helper functions for CouchDB"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {cutil_app, []}},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

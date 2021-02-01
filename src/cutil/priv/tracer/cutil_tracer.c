@@ -30,6 +30,7 @@
     A(exception_from) \
     A(exit) \
     A(extra) \
+    A(filter) \
     A(gc_major_end) \
     A(gc_major_start) \
     A(gc_minor_end) \
@@ -81,6 +82,9 @@ NIF_ATOMS(NIF_ATOM_DECL)
     F(trace, 5)
 
 NIF_FUNCTIONS(NIF_FUNCTION_H_DECL)
+
+ERL_NIF_TERM NIF_FUNCTION_NAME(filtered_trace)(ErlNifEnv*, const ERL_NIF_TERM [], ErlNifPid tracer);
+ERL_NIF_TERM NIF_FUNCTION_NAME(regular_trace)(ErlNifEnv*, const ERL_NIF_TERM [], ErlNifPid tracer);
 
 static int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
 {
@@ -170,9 +174,9 @@ NIF_FUNCTION(enabled_send)
     return atom_trace;
 }
 
-// trace(TraceTag, TracerState, Tracee, TraceTerm, Opts)
 
-NIF_FUNCTION(trace)
+
+ERL_NIF_TERM NIF_FUNCTION_NAME(filtered_trace)(ErlNifEnv* env, const ERL_NIF_TERM argv[], ErlNifPid tracer)
 {
     /*
     * argv[0]: TraceTag, should only be 'call'
@@ -181,44 +185,20 @@ NIF_FUNCTION(trace)
     * argv[3]: Message
     * argv[4]: Options, map containing `match_spec_result`
     */
-    ERL_NIF_TERM tracers, head, ts, extra, mspec, msg;
-    ErlNifPid tracer;
-    unsigned int nth;
-    size_t len;
+    return atom_ok;
+}
+
+ERL_NIF_TERM NIF_FUNCTION_NAME(regular_trace)(ErlNifEnv* env, const ERL_NIF_TERM argv[], ErlNifPid tracer)
+{
+    /*
+    * argv[0]: TraceTag, should only be 'call'
+    * argv[1]: TracerState, map containing #{mode => filter, tracers=>#{}, trace-id=>binary()}
+    * argv[2]: Tracee
+    * argv[3]: Message
+    * argv[4]: Options, map containing `match_spec_result`
+    */
+    ERL_NIF_TERM ts, extra, mspec, msg;
     int has_extra, has_mspec;
-
-    if (!enif_get_map_value(env, argv[1], atom_tracers, &tracers))
-        return atom_ok;
-
-    // We know for a fact that the argument is a map. And if not,
-    // no problem because we will return when trying to get a value from it.
-    enif_get_map_size(env, tracers, &len);
-
-#if (ERL_NIF_MAJOR_VERSION >= 2) && (ERL_NIF_MINOR_VERSION >= 12)
-    nth = enif_hash(ERL_NIF_INTERNAL_HASH, argv[2], 0) % len;
-#else
-    // Select the correct tracer for this process.
-    //
-    // The pid value is detailed in:
-    //     5b6dd0e84cf0f1dc19ddd05f86cf04b2695d8a9e/erts/emulator/beam/erl_term.h#L498
-    //
-    // As can be seen there, the first four bits of the pid value
-    // are always the same. We therefore shift them out.
-
-    ErlNifPid tracee;
-
-    if (!enif_get_local_pid(env, argv[2], &tracee))
-        return atom_ok;
-
-    nth = (tracee.pid >> 4) % len;
-#endif
-
-    if (!enif_get_map_value(env, tracers, enif_make_int(env, nth), &head))
-        return atom_ok;
-
-    if (!enif_get_local_pid(env, head, &tracer))
-        return atom_ok;
-
     // Everything good. Generate a timestamp to include in the message.
 
     ts = enif_make_int64(env, enif_monotonic_time(ERL_NIF_USEC));
@@ -254,6 +234,63 @@ NIF_FUNCTION(trace)
     enif_send(env, &tracer, NULL, msg);
 
     return atom_ok;
+}
+
+// trace(TraceTag, TracerState, Tracee, TraceTerm, Opts)
+
+NIF_FUNCTION(trace)
+{
+    /*
+    * argv[0]: TraceTag, should only be 'call'
+    * argv[1]: TracerState, map containing #{mode => filter, tracers=>#{}, trace-id=>binary()}
+    * argv[2]: Tracee
+    * argv[3]: Message
+    * argv[4]: Options, map containing `match_spec_result`
+    */
+    ERL_NIF_TERM tracers, head, mspec, mode;
+    ErlNifPid tracer;
+    unsigned int nth;
+    size_t len;
+
+    if (!enif_get_map_value(env, argv[1], atom_tracers, &tracers))
+        return atom_ok;
+
+    // We know for a fact that the argument is a map. And if not,
+    // no problem because we will return when trying to get a value from it.
+    enif_get_map_size(env, tracers, &len);
+
+#if (ERL_NIF_MAJOR_VERSION >= 2) && (ERL_NIF_MINOR_VERSION >= 12)
+    nth = enif_hash(ERL_NIF_INTERNAL_HASH, argv[2], 0) % len;
+#else
+    // Select the correct tracer for this process.
+    //
+    // The pid value is detailed in:
+    //     5b6dd0e84cf0f1dc19ddd05f86cf04b2695d8a9e/erts/emulator/beam/erl_term.h#L498
+    //
+    // As can be seen there, the first four bits of the pid value
+    // are always the same. We therefore shift them out.
+
+    ErlNifPid tracee;
+
+    if (!enif_get_local_pid(env, argv[2], &tracee))
+        return atom_ok;
+
+    nth = (tracee.pid >> 4) % len;
+#endif
+
+    if (!enif_get_map_value(env, tracers, enif_make_int(env, nth), &head))
+        return atom_ok;
+
+    if (!enif_get_local_pid(env, head, &tracer))
+        return atom_ok;
+
+    if (enif_get_map_value(env, argv[4], atom_match_spec_result, &mspec)
+        && enif_get_map_value(env, argv[1], atom_mode, &mode)
+        && enif_is_identical(atom_filter, mode)) {
+            return NIF_FUNCTION_NAME(filtered_trace)(env, argv, tracer);
+    } else {
+        return NIF_FUNCTION_NAME(regular_trace)(env, argv, tracer);
+    }
 }
 
 static ErlNifFunc nif_funcs[] = {

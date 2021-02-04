@@ -32,6 +32,7 @@
         idx :: pos_integer()
     }).
 
+-include("cutil.hrl").
 
 start_link(Nth, Opts) ->
     Pid = proc_lib:spawn_link(?MODULE, init, [[self(), Nth, Opts]]),
@@ -84,13 +85,7 @@ system_code_change(Misc, _, _, _) ->
     {ok, Misc}.
 
 
-format_event(Event) ->
-    %% The messages can be in the following formats
-    %% - {Tag, Tracee, Ts, Term}
-    %% - {Tag, Tracee, Ts, Term, Extra}
-    %% - {Tag, Tracee, Ts, Term, Result}
-    %% - {Tag, Tracee, Ts, Term, Extra, Result}
-
+format_event(#cutil_tracer_event{ts = Ts} = Event) ->
     %% Convert the event's monotonic time to its system time.
-    TimeStamp = erlang:time_offset(microsecond) + element(3, Event),
-    setelement(3, Event, TimeStamp).
+    TimeStamp = erlang:time_offset(microsecond) + Ts,
+    Event#cutil_tracer_event{ts = TimeStamp}.

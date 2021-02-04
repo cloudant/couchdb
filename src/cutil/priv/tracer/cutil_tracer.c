@@ -25,6 +25,7 @@
     A(call) \
     A(closed) \
     A(cpu_timestamp) \
+    A(cutil_tracer_event) \
     A(discard) \
     A(exception_from) \
     A(exit) \
@@ -41,6 +42,7 @@
     A(match_spec_result) \
     A(mode) \
     A(monotonic) \
+    A(nil) \
     A(ok) \
     A(open) \
     A(out) \
@@ -172,6 +174,13 @@ NIF_FUNCTION(enabled_send)
 
 NIF_FUNCTION(trace)
 {
+    /*
+    * argv[0]: TraceTag, should only be 'call'
+    * argv[1]: TracerState, map containing #{mode => filter, tracers=>#{}, trace-id=>binary()}
+    * argv[2]: Tracee
+    * argv[3]: Message
+    * argv[4]: Options, map containing `match_spec_result`
+    */
     ERL_NIF_TERM tracers, head, ts, extra, mspec, msg;
     ErlNifPid tracer;
     unsigned int nth;
@@ -217,27 +226,28 @@ NIF_FUNCTION(trace)
     // Build the message. There can be two different messages
     // depending on whether the extra option was set:
     //
-    // - {Tag, Tracee, Ts, Term}
-    // - {Tag, Tracee, Ts, Term, Extra}
+    // - {cutil_tracer_event, Tag, Tracee, Ts, Term, nil, nil, nil}
+    // - {cutil_tracer_event, Tag, Tracee, Ts, Term, nil, Extra, nil}
     //
     // On top of that when match specs are enabled we may have
     // one additional term at the end of the tuple containing
     // the result of the match spec function.
     //
-    // - {Tag, Tracee, Ts, Term, Result}
-    // - {Tag, Tracee, Ts, Term, Extra, Result}
+    // - {cutil_tracer_event, Tag, Tracee, Ts, Term, nil, nil, nil, Result}
+    // - {cutil_tracer_event, Tag, Tracee, Ts, Term, nil, nil, Extra, Result}
 
     has_extra = enif_get_map_value(env, argv[4], atom_extra, &extra);
     has_mspec = enif_get_map_value(env, argv[4], atom_match_spec_result, &mspec);
 
-    if (has_extra && has_mspec)
-        msg = enif_make_tuple6(env, argv[0], argv[2], ts, argv[3], extra, mspec);
-    else if (has_extra)
-        msg = enif_make_tuple5(env, argv[0], argv[2], ts, argv[3], extra);
-    else if (has_mspec)
-        msg = enif_make_tuple5(env, argv[0], argv[2], ts, argv[3], mspec);
-    else
-        msg = enif_make_tuple4(env, argv[0], argv[2], ts, argv[3]);
+    if (has_extra && has_mspec) {
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, extra, mspec);
+    } else if (has_extra) {
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, extra, atom_nil);
+    } else if (has_mspec) {
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, atom_nil, mspec);
+    } else {
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, atom_nil, atom_nil);
+    }
 
     // Send the message to the selected tracer.
 

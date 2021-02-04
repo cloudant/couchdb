@@ -17,6 +17,7 @@
 ]).
 
 -include_lib("eunit/include/eunit.hrl").
+-include("cutil.hrl").
 
 -define(T(Name), {foreachx, fun setup/1, fun teardown/2, [{Name, fun Name/2}]}).
 -define(LOC, [
@@ -66,18 +67,18 @@ should_do_non_filtered_call_trace(_, {Collector, PoolPid}) ->
         ?assert(is_list(Events)),
         ?assertNotEqual([], Events),
         %% check the pid of a process is set in each event
-        ?assert(lists:all(fun(E) -> element(2, E) == self() end, Events)),
+        ?assert(lists:all(fun(#cutil_tracer_event{tracee = Pid}) -> Pid == self() end, Events)),
 
         %% check timestamp is set sometime after the test start
-        Times = [element(3, E) || E <- Events],
+        Times = [Ts || #cutil_tracer_event{ts = Ts} <- Events],
         ?assert(lists:all(fun(T) ->
             Earliest < T
         end, Times)),
 
 
-        Striped = lists:map(fun(E) ->
-            [Type, _, _ | Rest] = tuple_to_list(E),
-            list_to_tuple([Type | Rest])
+        Striped = lists:map(fun(#cutil_tracer_event{} = Event) ->
+            #cutil_tracer_event{tag = Tag, term = Term, extra = Extra} = Event,
+            {Tag, Term, Extra}
         end, Events),
 
         ?assertEqual([
@@ -178,4 +179,3 @@ loop(Events) ->
         {{From, Ref}, stop} ->
             From ! {Ref, {ok, Events}}
     end.
-

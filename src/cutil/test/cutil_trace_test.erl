@@ -47,7 +47,8 @@ cutil_trace_test_() ->
             fun() -> application:start(cutil) end,
             fun(_) -> application:stop(cutil) end,
             [
-                ?T(should_do_non_filtered_call_trace)
+                ?T(should_do_non_filtered_call_trace),
+                ?T(should_do_filtered_call_trace)
             ]
         }
     }.
@@ -95,6 +96,66 @@ should_do_non_filtered_call_trace(_, {Collector, PoolPid}) ->
             {call, {lists, seq, "IL"}, nil},
             {return_from, {lists, seq, 2}, "IJKL"}
 
+        ], Striped),
+        ok
+    end).
+
+should_do_filtered_call_trace(_, {Collector, PoolPid}) ->
+    ?_test(begin
+        Earliest = erlang:system_time(microsecond),
+        TriggerMFA = {?MODULE, seq, 1},
+        TargetMFA = {lists, seq, 2},
+        TargetId = <<"target_id">>,
+        TraceId = erlang:md5(term_to_binary(?FUNCTION_NAME)),
+        TargetMS = [{['$1', '$2'], [{'andalso',{is_seq_trace},{'<','$1',10}}], [{message, #{
+            caller_mfa => {caller},
+            seq_token => {get_seq_token},
+            target_id => TargetId,
+            trace_id => TraceId,
+            ms_return => [{'+', '$2', 1}],
+            trigger_mfa => {TriggerMFA}
+        }}]}],
+        TriggerMS = [{['$1'],[],[
+            {set_seq_token, label, TraceId},
+            {message, #{
+                trace_id => TraceId,
+                seq_token => {get_seq_token}
+            }}
+        ]}],
+        erlang:trace_pattern(TriggerMFA, TriggerMS, [local]),
+        erlang:trace_pattern(TargetMFA, TargetMS, [local]),
+        cutil_trace:trace(PoolPid, TraceId, filter),
+        fut(1),
+        fut(2),
+        fut(3),
+        {ok, Events0} = wait(Collector, 2, ?LOC, "Cannot get all events we expect"),
+        Events = lists:keysort(#cutil_tracer_event.ts, Events0),
+        ?assert(is_list(Events)),
+        ?assertNotEqual([], Events),
+        %% check the pid of a process is set in each event
+        ?assert(lists:all(fun(#cutil_tracer_event{tracee = Pid}) -> Pid == self() end, Events)),
+
+        %% check timestamp is set sometime after the test start
+        Times = [Ts || #cutil_tracer_event{ts = Ts} <- Events],
+        ?assert(lists:all(fun(T) ->
+            Earliest < T
+        end, Times)),
+
+        %% Check args is nil for filtered traces
+        Args = [A || #cutil_tracer_event{args = A} <- Events],
+        ?assertEqual([nil], lists:usort(Args)),
+
+        Striped = lists:map(fun(#cutil_tracer_event{} = Event) ->
+            #cutil_tracer_event{tag = Tag, term = Term, mspec = #{ms_return := Return}} = Event,
+            {Tag, Term, Return}
+        end, Events),
+
+        % make sure we don't have events for
+        % - [2, 4] which is protected by sensitive flag
+        % - [$I, $L] which is not in the scope of the trigger
+        ?assertEqual([
+            {call, {lists,seq, [1, 3]}, [4]},
+            {call, {lists,seq,[3, 5]}, [6]}
         ], Striped),
         ok
     end).

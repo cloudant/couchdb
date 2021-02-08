@@ -23,6 +23,7 @@
 #define NIF_ATOMS(A) \
     A(_nif_thread_ret_) \
     A(call) \
+    A(caller_mfa) \
     A(closed) \
     A(cpu_timestamp) \
     A(cutil_tracer_event) \
@@ -59,13 +60,17 @@
     A(scheduler_id) \
     A(send) \
     A(send_to_non_existing_process) \
+    A(seq_token) \
     A(spawn) \
     A(spawned) \
     A(strict_monotonic) \
+    A(target_id) \
     A(timestamp) \
     A(trace) \
+    A(trace_id) \
     A(trace_status) \
     A(tracers) \
+    A(trigger_mfa) \
     A(unlink) \
     A(unregister)
 
@@ -185,6 +190,78 @@ ERL_NIF_TERM NIF_FUNCTION_NAME(filtered_trace)(ErlNifEnv* env, const ERL_NIF_TER
     * argv[3]: Message
     * argv[4]: Options, map containing `match_spec_result`
     */
+    const ERL_NIF_TERM *seq_token_tuple;
+    ERL_NIF_TERM ts, extra, mspec, msg, trace_id, target_id, seq_token_term, trigger_mfa, caller_mfa;
+    int has_extra, has_mspec, seq_token_arity;
+
+    // Everything good. Generate a timestamp to include in the message.
+
+    ts = enif_make_int64(env, enif_monotonic_time(ERL_NIF_USEC));
+
+    has_extra = enif_get_map_value(env, argv[4], atom_extra, &extra);
+    has_mspec = enif_get_map_value(env, argv[4], atom_match_spec_result, &mspec);
+
+    // We only expect to use filter feature for call tracers with matchspec
+    if(!has_mspec) {
+        return atom_ok;
+    }
+
+    if(!enif_get_map_value(env, argv[1], atom_trace_id, &trace_id)) {
+        return atom_ok;
+    }
+
+    if(!enif_get_map_value(env, mspec, atom_target_id, &target_id)) {
+        return atom_ok;
+    }
+    if(!enif_get_map_value(env, mspec, atom_seq_token, &seq_token_term)) {
+        return atom_ok;
+    }
+    if(!enif_get_tuple(env, seq_token_term, &seq_token_arity, &seq_token_tuple)) {
+        return atom_ok;
+    }
+    if(seq_token_arity < 2) {
+        return atom_ok;
+    }
+    // ignore events if trace_id doesn't match
+    if(enif_compare(seq_token_tuple[1], trace_id) != 0) {
+        return atom_ok;
+    }
+    if(!enif_get_map_value(env, mspec, atom_caller_mfa, &caller_mfa)) {
+        return atom_ok;
+    }
+    if(!enif_get_map_value(env, mspec, atom_trigger_mfa, &trigger_mfa)) {
+        return atom_ok;
+    }
+    if(enif_compare(trigger_mfa, caller_mfa) != 0) {
+        return atom_ok;
+    }
+
+
+    // Build the message. There can be two different messages
+    // depending on whether the extra option was set:
+    //
+    // - {cutil_tracer_event, Tag, Tracee, Ts, Term, nil, nil, nil}
+    // - {cutil_tracer_event, Tag, Tracee, Ts, Term, nil, Extra, nil}
+    //
+    // On top of that when match specs are enabled we may have
+    // one additional term at the end of the tuple containing
+    // the result of the match spec function.
+    //
+    // - {cutil_tracer_event, Tag, Tracee, Ts, Term, nil, nil, nil, Result}
+    // - {cutil_tracer_event, Tag, Tracee, Ts, Term, nil, nil, Extra, Result}
+
+    if (has_extra && has_mspec) {
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, extra, mspec);
+    } else if (has_extra) {
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, extra, atom_nil);
+    } else if (has_mspec) {
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, atom_nil, mspec);
+    } else {
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, atom_nil, atom_nil);
+    }
+
+    // Send the message to the selected tracer.
+    enif_send(env, &tracer, NULL, msg);
     return atom_ok;
 }
 
@@ -247,7 +324,7 @@ NIF_FUNCTION(trace)
     * argv[3]: Message
     * argv[4]: Options, map containing `match_spec_result`
     */
-    ERL_NIF_TERM tracers, head, mspec, mode;
+    ERL_NIF_TERM tracers, head, mode;
     ErlNifPid tracer;
     unsigned int nth;
     size_t len;
@@ -284,8 +361,7 @@ NIF_FUNCTION(trace)
     if (!enif_get_local_pid(env, head, &tracer))
         return atom_ok;
 
-    if (enif_get_map_value(env, argv[4], atom_match_spec_result, &mspec)
-        && enif_get_map_value(env, argv[1], atom_mode, &mode)
+    if (enif_get_map_value(env, argv[1], atom_mode, &mode)
         && enif_is_identical(atom_filter, mode)) {
             return NIF_FUNCTION_NAME(filtered_trace)(env, argv, tracer);
     } else {

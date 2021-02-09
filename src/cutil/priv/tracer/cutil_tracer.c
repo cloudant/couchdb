@@ -190,9 +190,11 @@ ERL_NIF_TERM NIF_FUNCTION_NAME(filtered_trace)(ErlNifEnv* env, const ERL_NIF_TER
     * argv[3]: Message
     * argv[4]: Options, map containing `match_spec_result`
     */
-    const ERL_NIF_TERM *seq_token_tuple;
+    const ERL_NIF_TERM *seq_token_tuple, *mfa_tuple;
     ERL_NIF_TERM ts, extra, mspec, msg, trace_id, target_id, seq_token_term, trigger_mfa, caller_mfa;
-    int has_extra, has_mspec, seq_token_arity;
+    ERL_NIF_TERM mfa, mfa_arity;
+    int has_extra, has_mspec, seq_token_arity, mfa_tuple_arity;
+    unsigned int args_length;
 
     // Everything good. Generate a timestamp to include in the message.
 
@@ -236,6 +238,18 @@ ERL_NIF_TERM NIF_FUNCTION_NAME(filtered_trace)(ErlNifEnv* env, const ERL_NIF_TER
         return atom_ok;
     }
 
+    // construct MFA without args (replace args with arity)
+    if(!enif_get_tuple(env, argv[3], &mfa_tuple_arity, &mfa_tuple)) {
+        return atom_ok;
+    }
+    if(mfa_tuple_arity != 3) {
+        return atom_ok;
+    }
+    if(!enif_get_list_length(env, mfa_tuple[2], &args_length)) {
+        return atom_ok;
+    }
+    mfa_arity =  enif_make_uint(env, args_length);
+    mfa = enif_make_tuple3(env, mfa_tuple[0], mfa_tuple[1], mfa_arity);
 
     // Build the message. There can be two different messages
     // depending on whether the extra option was set:
@@ -251,13 +265,13 @@ ERL_NIF_TERM NIF_FUNCTION_NAME(filtered_trace)(ErlNifEnv* env, const ERL_NIF_TER
     // - {cutil_tracer_event, Tag, Tracee, Ts, Term, nil, nil, Extra, Result}
 
     if (has_extra && has_mspec) {
-        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, extra, mspec);
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, mfa, atom_nil, extra, mspec);
     } else if (has_extra) {
-        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, extra, atom_nil);
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, mfa, atom_nil, extra, atom_nil);
     } else if (has_mspec) {
-        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, atom_nil, mspec);
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, mfa, atom_nil, atom_nil, mspec);
     } else {
-        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, argv[3], atom_nil, atom_nil, atom_nil);
+        msg = enif_make_tuple8(env, atom_cutil_tracer_event, argv[0], argv[2], ts, mfa, atom_nil, atom_nil, atom_nil);
     }
 
     // Send the message to the selected tracer.

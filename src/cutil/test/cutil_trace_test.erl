@@ -154,8 +154,8 @@ should_do_filtered_call_trace(_, {Collector, PoolPid}) ->
         % - [2, 4] which is protected by sensitive flag
         % - [$I, $L] which is not in the scope of the trigger
         ?assertEqual([
-            {call, {lists,seq, [1, 3]}, [4]},
-            {call, {lists,seq,[3, 5]}, [6]}
+            {call, {lists,seq, 2}, [4]},
+            {call, {lists,seq, 2}, [6]}
         ], Striped),
         ok
     end).

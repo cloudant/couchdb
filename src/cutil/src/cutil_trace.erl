@@ -55,6 +55,16 @@
     stop_pool/1
 ]).
 
+-export([
+    parse_tracebook/1
+]).
+
+% Exported for test purposes
+-export([
+    parse_points/1,
+    activate_points/2
+]).
+
 -type pool_id() :: atom().
 -type tracing_mode() :: trace
     | filter
@@ -80,6 +90,7 @@
 -type id() :: binary().
 -type trace_id() :: id().
 -type error(_Error) :: no_return().
+-type points() :: #{TriggerMFA :: mfa() => cutil_trace_book:point()}.
 
 -spec trace(PoolPid :: pid(), TraceId :: trace_id(), Mode :: tracing_mode()) ->
     integer() | error({unknown_mode, Mode :: term()}).
@@ -136,3 +147,57 @@ get_pool(Name, #{} = Options) ->
 
 stop_pool(NameOrPid) ->
     cutil_sup:stop_pool(NameOrPid).
+
+-spec parse_tracebook(JSONObj :: cutil_json:json_object()) ->
+    {cutil_trace_book:trace_book(), Errors :: [Reason :: term()]}.
+
+parse_tracebook(JSONObj) ->
+    cutil_trace_book:parse_tracebook(JSONObj).
+
+
+-spec parse_points(cutil_json:json_object()) ->
+    {ParsedPoints :: points(), Errors :: list(Reason :: term())}.
+
+parse_points(Points) ->
+    cutil_trace_book:parse_points(Points).
+
+
+-spec activate_points(Points :: points(), trace_id()) ->
+    non_neg_integer().
+
+activate_points(Points, TraceId) ->
+    maps:fold(fun(TriggerMFA, {{TriggerMFA, TriggerMS0, _TriggerStr}, Targets}, Acc) ->
+        maps:fold(fun(TargetId, {TargetMFA, _TargetMS0, _} = Target, InAcc) ->
+            Id = {TriggerMFA, TargetId},
+            TriggerMS = trigger_ms(TraceId, TriggerMS0),
+            R1 = erlang:trace_pattern(TriggerMFA, TriggerMS, [local]),
+            TargetMS = target_ms(TraceId, TriggerMFA, TargetId, Target),
+            R2 = erlang:trace_pattern(TargetMFA, TargetMS, [local]),
+            R1 + R2 + InAcc
+        end, Acc, Targets)
+    end, 0, Points),
+    ok.
+
+
+target_ms(TraceId, TriggerMFA, TargetId, {_TargetMFA, TargetMS, _}) ->
+    [{Head, Conditions, Body}] = TargetMS,
+    [{Head, Conditions, [{message, #{
+        caller_mfa => {caller},
+        seq_token => {get_seq_token},
+        target_id => TargetId,
+        trace_id => TraceId,
+        ms_return => Body,
+        trigger_mfa => {TriggerMFA}
+    }}] }].
+
+
+trigger_ms(TraceId, [{Head, Conditions, _Body}]) ->
+    [{Head, Conditions, [
+        {set_seq_token, label, TraceId},
+        {message, #{
+            trace_id => TraceId,
+            seq_token => {get_seq_token}
+        }}
+    ]}].
+
+

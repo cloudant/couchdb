@@ -48,7 +48,8 @@ cutil_trace_test_() ->
             fun(_) -> application:stop(cutil) end,
             [
                 ?T(should_do_non_filtered_call_trace),
-                ?T(should_do_filtered_call_trace)
+                ?T(should_do_filtered_call_trace),
+                ?T(should_trace_single_target_rule)
             ]
         }
     }.
@@ -160,6 +161,89 @@ should_do_filtered_call_trace(_, {Collector, PoolPid}) ->
         ok
     end).
 
+
+should_trace_single_target_rule(_, {Collector, PoolPid}) ->
+    ?_test(begin
+        TraceId = erlang:md5(term_to_binary(?FUNCTION_NAME)),
+        TriggerSrc = <<"cutil_trace_test:seq([A]) when A  == 3 -> ok.">>,
+        TargetSrc = <<"lists:seq([A, B]) when is_seq_trace() andalso A < 10 -> B + 1.">>,
+        Points = [{[
+            {<<"trigger">>, TriggerSrc},
+            {<<"targets">>, [TargetSrc]}
+        ]}],
+        {Parsed, PointsErrors} = cutil_trace:parse_points(Points),
+        ?assert(is_list(PointsErrors)),
+        ?assertEqual([], PointsErrors),
+
+        cutil_trace:activate_points(Parsed, TraceId),
+        cutil_trace:trace(PoolPid, TraceId, filter),
+        fut(1),
+        fut(2),
+        fut(3),
+        {ok, Events0} = wait(Collector, 2, ?LOC, "Cannot get all events we expect"),
+        Events = lists:keysort(#cutil_tracer_event.ts, Events0),
+        ?assert(is_list(Events)),
+        ?assertNotEqual([], Events),
+
+        Striped = lists:map(fun(#cutil_tracer_event{} = Event) ->
+            #cutil_tracer_event{tag = Tag, term = Term, mspec = #{ms_return := Return}} = Event,
+            {Tag, Term, Return}
+        end, Events),
+
+        % make sure we don't have events for
+        % - [2, 4] which is protected by sensitive flag
+        % - [$I, $L] which is not in the scope of the trigger
+        % also make sure that we have nil instead of args
+        ?assertEqual([
+            {call, {lists, seq, 2}, [4]},
+            {call, {lists, seq, 2}, [6]}
+        ], Striped),
+        ok
+    end).
+
+
+should_trace_single_target_tracebook(_, {Collector, PoolPid}) ->
+    ?_test(begin
+        TraceId = erlang:md5(term_to_binary(?FUNCTION_NAME)),
+        TraceBook = {[
+            {<<"id">>, <<"foo">>},
+            {<<"points">>, [{[
+                {<<"trigger">>, <<"cutil_trace_test:seq([A]) when A  == 3 -> ok.">>},
+                {<<"targets">>, [
+                    <<"lists:seq([A, B]) when is_seq_trace() andalso A < 10 -> B + 1.">>
+                ]}
+            ]}]}
+        ]},
+
+        {#{points := Parsed}, PointsErrors} = cutil_trace:parse_tracebook(TraceBook),
+        ?assert(is_list(PointsErrors)),
+        ?assertEqual([], PointsErrors),
+
+        cutil_trace:activate_points(Parsed, TraceId),
+        cutil_trace:trace(PoolPid, TraceId, filter),
+        fut(1),
+        fut(2),
+        fut(3),
+        {ok, Events0} = wait(Collector, 2, ?LOC, "Cannot get all events we expect"),
+        Events = lists:keysort(#cutil_tracer_event.ts, Events0),
+        ?assert(is_list(Events)),
+        ?assertNotEqual([], Events),
+
+        Striped = lists:map(fun(#cutil_tracer_event{} = Event) ->
+            #cutil_tracer_event{tag = Tag, term = Term, mspec = #{ms_return := Return}} = Event,
+            {Tag, Term, Return}
+        end, Events),
+
+        % make sure we don't have events for
+        % - [2, 4] which is protected by sensitive flag
+        % - [$I, $L] which is not in the scope of the trigger
+        % also make sure that we have nil instead of args
+        ?assertEqual([
+            {call, {lists, seq, 2}, [4]},
+            {call, {lists, seq, 2}, [6]}
+        ], Striped),
+        ok
+    end).
 
 init(_Idx, #{collector := Collector}) ->
     {ok, Collector}.

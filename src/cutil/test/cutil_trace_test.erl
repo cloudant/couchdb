@@ -242,6 +242,17 @@ should_trace_single_target_tracebook(_, {Collector, PoolPid}) ->
             {call, {lists, seq, 2}, [4]},
             {call, {lists, seq, 2}, [6]}
         ], Striped),
+
+        MatchSpecs = lists:map(fun(#cutil_tracer_event{mspec = Extra}) ->
+            #{ms_return := Return, ms := MS} = Extra,
+            {Return, MS}
+        end, Events),
+        {{_, TriggerMS, TriggerSrc}, TargetMap} = maps:get({cutil_trace_test,seq,1}, Parsed),
+        [{_, Target}] = maps:to_list(TargetMap),
+        ?assertEqual([
+            {[4], {TriggerMS, TriggerSrc, Target}},
+            {[6], {TriggerMS, TriggerSrc, Target}}
+        ], MatchSpecs),
         ok
     end).
 

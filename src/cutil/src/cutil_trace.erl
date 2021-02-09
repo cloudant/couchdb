@@ -87,6 +87,8 @@
     pool_size => pos_integer()
 }.
 
+-define(REGISTRY, cutil_trace_registry).
+
 -type id() :: binary().
 -type trace_id() :: id().
 -type error(_Error) :: no_return().
@@ -166,9 +168,10 @@ parse_points(Points) ->
     non_neg_integer().
 
 activate_points(Points, TraceId) ->
-    maps:fold(fun(TriggerMFA, {{TriggerMFA, TriggerMS0, _TriggerStr}, Targets}, Acc) ->
+    maps:fold(fun(TriggerMFA, {{TriggerMFA, TriggerMS0, TriggerStr}, Targets}, Acc) ->
         maps:fold(fun(TargetId, {TargetMFA, _TargetMS0, _} = Target, InAcc) ->
             Id = {TriggerMFA, TargetId},
+            cutil_term:put(?REGISTRY, Id, {TriggerMS0, TriggerStr, Target}),
             TriggerMS = trigger_ms(TraceId, TriggerMS0),
             R1 = erlang:trace_pattern(TriggerMFA, TriggerMS, [local]),
             TargetMS = target_ms(TraceId, TriggerMFA, TargetId, Target),

@@ -32,6 +32,8 @@
         idx :: pos_integer()
     }).
 
+-define(REGISTRY, cutil_trace_registry).
+
 -include("cutil.hrl").
 
 start_link(Nth, Opts) ->
@@ -85,7 +87,16 @@ system_code_change(Misc, _, _, _) ->
     {ok, Misc}.
 
 
-format_event(#cutil_tracer_event{ts = Ts} = Event) ->
+format_event(#cutil_tracer_event{ts = Ts, mspec = Info} = Event) ->
     %% Convert the event's monotonic time to its system time.
     TimeStamp = erlang:time_offset(microsecond) + Ts,
-    Event#cutil_tracer_event{ts = TimeStamp}.
+    MS = lookup_ms(Info),
+    Event#cutil_tracer_event{ts = TimeStamp, mspec = maps:put(ms, MS, Info)}.
+
+
+lookup_ms(Info) ->
+    #{
+        trigger_mfa := TriggerMFA,
+        target_id := TargetId
+    } = Info,
+    cutil_term:get(?REGISTRY, {TriggerMFA, TargetId}, undefined).

@@ -56,12 +56,12 @@
 ]).
 
 -export([
-    parse_tracebook/1
+    parse_tracebook/2
 ]).
 
 % Exported for test purposes
 -export([
-    parse_points/1,
+    parse_points/2,
     activate_points/2
 ]).
 
@@ -150,18 +150,18 @@ get_pool(Name, #{} = Options) ->
 stop_pool(NameOrPid) ->
     cutil_sup:stop_pool(NameOrPid).
 
--spec parse_tracebook(JSONObj :: cutil_json:json_object()) ->
+-spec parse_tracebook(JSONObj :: cutil_json:json_object(), cutil_syntax:records()) ->
     {cutil_trace_book:trace_book(), Errors :: [Reason :: term()]}.
 
-parse_tracebook(JSONObj) ->
-    cutil_trace_book:parse_tracebook(JSONObj).
+parse_tracebook(JSONObj, Records) ->
+    cutil_trace_book:parse_tracebook(JSONObj, Records).
 
 
--spec parse_points(cutil_json:json_object()) ->
+-spec parse_points(cutil_json:json_object(), cutil_syntax:records()) ->
     {ParsedPoints :: points(), Errors :: list(Reason :: term())}.
 
-parse_points(Points) ->
-    cutil_trace_book:parse_points(Points).
+parse_points(Points, Records) ->
+    cutil_trace_book:parse_points(Points, Records).
 
 
 -spec activate_points(Points :: points(), trace_id()) ->

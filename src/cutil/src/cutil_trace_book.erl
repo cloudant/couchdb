@@ -13,8 +13,8 @@
 -module(cutil_trace_book).
 
 -export([
-    parse_tracebook/1,
-    parse_points/1
+    parse_tracebook/2,
+    parse_points/2
 ]).
 
 -type id() :: binary().
@@ -23,17 +23,17 @@
 -type point() :: {Trigger :: rule(), Targets :: #{id() => rule()}}.
 -type trace_book() :: #{id := binary(), points := list(point())}.
 
--spec parse_tracebook(JSONObj :: cutil_json:json_object()) ->
+-spec parse_tracebook(JSONObj :: cutil_json:json_object(), cutil_syntax:records()) ->
     {trace_book(), Errors :: [Reason :: term()]}.
 
-parse_tracebook(JSONObj) ->
+parse_tracebook(JSONObj, Records) ->
     [BookId, Points] = cutil_json:take_keys(
         JSONObj, [<<"id">>, <<"points">>], [undefined, []]),
     case BookId of
         undefine ->
             {#{}, [{missing_key, <<"id">>}]};
         BookId ->
-            {Results, Errors} = parse_points(Points),
+            {Results, Errors} = parse_points(Points, Records),
             Book = #{
                 id => BookId,
                 points => Results
@@ -48,10 +48,10 @@ parse_tracebook(JSONObj) ->
 %%     {<<"targets">>, [TargetSrc :: string()]}
 %% ]}
 
--spec parse_points(cutil_json:json_object()) -> 
+-spec parse_points(cutil_json:json_object(), cutil_syntax:records()) ->
     {Parsed :: #{TriggerMFA :: mfa() => point()}, Errors :: list(Reason :: term())}.
 
-parse_points(Points) when is_list(Points) ->
+parse_points(Points, Records) when is_list(Points) ->
     {_, Results, Errors} = lists:foldl(fun(PointObj, {Idx, Acc, ErrorsAcc}) ->
         [TriggerStr, Targets] = cutil_json:take_keys(
             PointObj, [<<"trigger">>, <<"targets">>], [undefined, []]),
@@ -59,7 +59,7 @@ parse_points(Points) when is_list(Points) ->
             undefined ->
                 {Idx + 1, Acc, [{missing_key, <<"trigger">>, in, Idx} | ErrorsAcc]};
             TriggerStr ->
-                case parse_point(TriggerStr, Targets) of
+                case parse_point(TriggerStr, Targets, Records) of
                     {error, Reason} ->
                         {Idx + 1, Acc, [{in, Idx, Reason} | ErrorsAcc]};
                     {{TriggerMFA, _, _}, _} = Point ->
@@ -70,14 +70,18 @@ parse_points(Points) when is_list(Points) ->
     {Results, Errors}.
 
 
--spec parse_point(TriggerStr :: string(), Targets :: list(string())) -> point().
+-spec parse_point(
+        TriggerStr :: string(),
+        Targets :: list(string()),
+        cutil_syntax:records()
+    ) -> point().
 
-parse_point(TriggerStr, Targets) ->
-    case parse_rule(TriggerStr) of
+parse_point(TriggerStr, Targets, Records) ->
+    case parse_rule(TriggerStr, Records) of
         {error, _} = Error ->
             Error;
         TriggerRule ->
-            case parse_targets(Targets) of
+            case parse_targets(Targets, Records) of
                 {ParsedTargets, []} ->
                     {TriggerRule, ParsedTargets};
                 {_, Errors} ->
@@ -86,12 +90,12 @@ parse_point(TriggerStr, Targets) ->
     end.
 
 
--spec parse_targets(Targets :: list(string())) ->
+-spec parse_targets(Targets :: list(string()), cutil_syntax:records()) ->
     {list(rule()), Errors :: [Reason :: term()]}.
 
-parse_targets(Targets) ->
+parse_targets(Targets, Records) ->
     {_, Parsed, Errors} = lists:foldl(fun(TargetStr, {Idx, Acc, ErrorsAcc}) ->
-        case parse_target(TargetStr) of
+        case parse_target(TargetStr, Records) of
             {error, Reason} ->
                 {Idx + 1, Acc, [Reason | ErrorsAcc]};
             {Id, Target} ->
@@ -101,11 +105,11 @@ parse_targets(Targets) ->
     {Parsed, Errors}.
 
 
--spec parse_target(TargetSrc :: string()) -> 
+-spec parse_target(TargetSrc :: string(), cutil_syntax:records()) ->
     {id(), rule()} | {error, Reason :: term()}.
 
-parse_target(TargetStr) ->
-    case parse_rule(TargetStr) of
+parse_target(TargetStr, Records) ->
+    case parse_rule(TargetStr, Records) of
         {error, _} = Error ->
             Error;
         {TargetMFA, MS, _} = Target ->
@@ -114,9 +118,10 @@ parse_target(TargetStr) ->
     end.
 
 
--spec parse_rule(string()) -> rule() | {error, Reason :: term()}.
+-spec parse_rule(binary(), cutil_syntax:records()) ->
+    {ok, rule()} | {error, Reason :: term()}.
 
-parse_rule(String) ->
+parse_rule(String, Records)  ->
     Steps = [
         fun(S) ->
             split_string(S, ":", 2, {error, "Cannot split module:function"})
@@ -178,9 +183,9 @@ join_if_not_error([], Acc) ->
     lists:reverse(Acc).
 
 
-str2ms(String) ->
+str2ms(String, Records) ->
     try
-        cutil_ms:str2ms(String)
+        cutil_ms:str2ms(String, Records)
     catch
         throw:{error, _} = Error ->
             Error;

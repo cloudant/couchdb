@@ -37,7 +37,7 @@
 % miscellany
 -export([design_docs/1, reset_validation_funs/1, cleanup_index_files/0,
     cleanup_index_files/1, cleanup_index_files_all_nodes/1, dbname/1,
-    inactive_index_files/1]).
+    inactive_index_files/1, records/0]).
 
 -include_lib("fabric/include/fabric.hrl").
 
@@ -667,6 +667,26 @@ set_namespace(NS, #mrargs{extra = Extra} = Args) ->
 
 get_view_sig_from_filename(FilePath) ->
     filename:basename(filename:basename(FilePath, ".view"), ".compact").
+
+records() ->
+    #{
+        httpd => record_info(fields, httpd),
+        rev_info => record_info(fields, rev_info),
+        doc_info => record_info(fields, doc_info),
+        size_info => record_info(fields, size_info),
+        full_doc_info => record_info(fields, full_doc_info),
+        doc => record_info(fields, doc),
+        user_ctx => record_info(fields, user_ctx),
+        view_fold_helper_funs => record_info(fields, view_fold_helper_funs),
+        reduce_fold_helper_funs => record_info(fields, reduce_fold_helper_funs),
+        extern_resp_args => record_info(fields, extern_resp_args),
+        index_header => record_info(fields, index_header),
+        changes_args => record_info(fields, changes_args),
+        btree => record_info(fields, btree),
+        proc => record_info(fields, proc),
+        leaf => record_info(fields, leaf),
+        fabric_changes_acc => record_info(fields, fabric_changes_acc)
+    }.
 
 %% -ifdef(TEST).
 %% -include_lib("eunit/include/eunit.hrl").

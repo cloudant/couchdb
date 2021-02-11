@@ -78,15 +78,15 @@ parse_points(Points, Records) when is_list(Points) ->
 
 parse_point(TriggerStr, Targets, Records) ->
     case parse_rule(TriggerStr, Records) of
-        {error, _} = Error ->
-            Error;
-        TriggerRule ->
+        {ok, TriggerRule} ->
             case parse_targets(Targets, Records) of
                 {ParsedTargets, []} ->
                     {TriggerRule, ParsedTargets};
                 {_, Errors} ->
                     {error, Errors}
-            end
+            end;
+        {error, _} = Error ->
+            Error
     end.
 
 
@@ -111,8 +111,8 @@ parse_targets(Targets, Records) ->
 parse_target(TargetStr, Records) ->
     case parse_rule(TargetStr, Records) of
         {error, _} = Error ->
-            Error;
-        {TargetMFA, MS, _} = Target ->
+            {in, TargetStr, Error};
+        {ok, {TargetMFA, MS, _} = Target} ->
             TargetId = erlang:md5(term_to_binary({TargetMFA, MS})),
             {TargetId, Target}
     end.
@@ -123,64 +123,63 @@ parse_target(TargetStr, Records) ->
 
 parse_rule(String, Records)  ->
     Steps = [
-        fun(S) ->
-            split_string(S, ":", 2, {error, "Cannot split module:function"})
-        end,
-        fun([ModuleString, FunctionDefinition]) ->
-            join_if_not_error([
-                cutil_syntax:parse_atom(ModuleString, {error, "Cannot parse module name"}),
-                split_string(FunctionDefinition, "(", 2, {error, "Cannot find ("})
-            ])
-        end,
-        fun([Module, FunctionString, FunctionClause]) ->
-            join_if_not_error([
-                Module,
-                cutil_syntax:parse_atom(FunctionString, {error, "Cannot parse function name"}),
-                string:trim(<<"(", FunctionClause/binary>>, trailing, ".")
-            ])
-        end,
-        fun([Module, Function, FunctionStr]) ->
-            join_if_not_error([
-                Module,
-                Function,
-                str2ms(FunctionStr)
-            ])
-        end,
-        fun([Module, Function, {Args, _Guards, _Body} = MS]) ->
-            {{Module, Function, length(Args)}, [MS], String}
-        end
+        {"split module:function", fun(S) ->
+            case string:split(S, ":") of
+                [Module, Function] ->
+                    {ok, {Module, Function}};
+                _ ->
+                    {error, "expecting to find ':' character"}
+            end
+        end},
+        {"parse module name", fun({ModuleString, Function}) ->
+            case cutil_syntax:parse_atom(ModuleString, {error}) of
+                {error} ->
+                    {error, binary_to_list(<<"'", ModuleString/binary, "' doesn't look like atom">>)};
+                Module ->
+                    {ok, {Module, Function}}
+            end
+        end},
+        {"extract function name", fun({Module, FunctionDef}) ->
+            case string:split(FunctionDef, "(") of
+                [FunctionName, FunctionClause] ->
+                    {ok, {Module, FunctionName, <<"(", FunctionClause/binary>>}};
+                _ ->
+                    {error, "expecting to find '(' character"}
+            end
+        end},
+        {"parse function name", fun({Module, FunctionNameStr, FunctionDef}) ->
+            case cutil_syntax:parse_atom(FunctionNameStr, {error}) of
+                {error} ->
+                    {error, binary_to_list(<<"'", FunctionNameStr/binary, "' doesn't look like atom">>)};
+                Function ->
+                    {ok, {Module, Function, FunctionDef}}
+            end
+        end},
+        {"parse function clause", fun({Module, Function, FunctionClause}) ->
+            case str2ms(remove_trailing_dot(FunctionClause), Records) of
+                [{Args, _Guards, _Body}] = MS ->
+                    {ok, {{Module, Function, length(Args)}, MS, String}};
+                {error, [{"TOP_LEVEL", _}], _} ->
+                    {error, "expecting single list argument '([_, _, ...]) -> ...'"};
+                {error, Reason} ->
+                    {error, Reason}
+            end
+        end}
     ],
     lists:foldl(fun
-        (_Step, {error, _} = Error) ->
-            Error;
-        (Step, Acc) ->
-            Step(Acc)
-    end, String, Steps).
+        ({StepName, _StepFun}, {error, Reason}) ->
+            {error, {"Cannot " ++ StepName, Reason}};
+        ({_StepName, StepFun}, {ok, Acc}) ->
+            StepFun(Acc);
+        ({_StepName, StepFun}, Acc) ->
+            {ok, StepFun(Acc)}
+    end, {ok, String}, Steps).
 
 
-split_string(String, Delimeter, ExpectedN, Error) ->
-    case string:split(String, Delimeter) of
-        Parts when length(Parts) =:= ExpectedN ->
-            Parts;
-        _ ->
-            Error
-    end.
+remove_trailing_dot(Binary) ->
+    string:trim(Binary, trailing, " \n\r\t.").
 
 
-join_if_not_error(Elements) ->
-    join_if_not_error(Elements, []).
-
-join_if_not_error([{error, _} = Error | _], _Acc) ->
-    Error;
-
-join_if_not_error([List | Rest], Acc) when is_list(List) ->
-    join_if_not_error(Rest, lists:reverse(List) ++ Acc);
-
-join_if_not_error([Result | Rest], Acc) ->
-    join_if_not_error(Rest, [Result | Acc]);
-
-join_if_not_error([], Acc) ->
-    lists:reverse(Acc).
 
 
 str2ms(String, Records) ->

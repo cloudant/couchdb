@@ -57,11 +57,11 @@ parse_points(Points, Records) when is_list(Points) ->
             PointObj, [<<"trigger">>, <<"targets">>], [undefined, []]),
         case TriggerStr of
             undefined ->
-                {Idx + 1, Acc, [{missing_key, <<"trigger">>, in, Idx} | ErrorsAcc]};
+                {Idx + 1, Acc, [{missing_key, <<"trigger">>, in, PointObj} | ErrorsAcc]};
             TriggerStr ->
                 case parse_point(TriggerStr, Targets, Records) of
                     {error, Reason} ->
-                        {Idx + 1, Acc, [{in, Idx, Reason} | ErrorsAcc]};
+                        {Idx + 1, Acc, [{in, TriggerStr, Reason} | ErrorsAcc]};
                     {{TriggerMFA, _, _}, _} = Point ->
                         {Idx + 1, maps:put(TriggerMFA, Point, Acc), ErrorsAcc}
                 end

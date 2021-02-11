@@ -46,10 +46,13 @@
 %%
 %% @see str2ms/2
 
--spec str2ms(String :: string()) -> 
+-spec str2ms(String :: string() | binary()) ->
     ms() | {error, Reason :: term()}.
 
-str2ms(String) ->
+str2ms(String) when is_binary(String) ->
+    str2ms(binary_to_list(String));
+
+str2ms(String) when is_list(String) ->
     case cutil_syntax:quote(String) of
         {error, _} = Error ->
             Error;
@@ -75,8 +78,12 @@ str2ms(String) ->
 %% This is equivalent to `syntax2ms(merl:quote(String), Records)`
 %% @see syntax2ms/2
 
--spec str2ms(String :: string(), Records :: cutil_syntax:records()) ->
+-spec str2ms(String :: string() | binary(), Records :: cutil_syntax:records()) ->
     ms() | {error, Reason :: term()}.
+
+str2ms(String, Records) when is_binary(String) ->
+    str2ms(binary_to_list(String), Records);
+
 str2ms(String, Records) ->
     case cutil_syntax:quote(String) of
         {error, _} = Error ->

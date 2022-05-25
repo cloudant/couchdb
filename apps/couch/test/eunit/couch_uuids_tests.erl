@@ -17,12 +17,12 @@
 -define(TIMEOUT, 20).
 
 setup_all() ->
-    test_util:start_applications([config]),
+    test_util:start_applications([config, couch_log]),
     couch_uuids:start().
 
 teardown_all(_) ->
     couch_uuids:stop(),
-    test_util:stop_applications([config]).
+    test_util:stop_applications([config, couch_log]).
 
 uuids_test_() ->
     {
@@ -38,23 +38,23 @@ uuids_test_() ->
     }.
 
 default_algorithm() ->
-    config:delete("uuids", "algorithm", false),
+    config:delete("uuids", "algorithm", _Persist = false),
     check_unique().
 
 sequential_algorithm() ->
-    config:set("uuids", "algorithm", "sequential", false),
+    config:set("uuids", "algorithm", "sequential", _Persist = false),
     check_unique(),
     check_increment_monotonically(),
     check_rollover().
 
 utc_algorithm() ->
-    config:set("uuids", "algorithm", "utc_random", false),
+    config:set("uuids", "algorithm", "utc_random", _Persist = false),
     check_unique(),
     check_increment_monotonically().
 
 utc_id_suffix_algorithm() ->
-    config:set("uuids", "algorithm", "utc_id", false),
-    config:set("uuids", "utc_id_suffix", "bozo", false),
+    config:set("uuids", "algorithm", "utc_id", _Persist = false),
+    config:set("uuids", "utc_id_suffix", "bozo", _Persist = false),
     check_unique(),
     check_increment_monotonically(),
     check_preserve_suffix().

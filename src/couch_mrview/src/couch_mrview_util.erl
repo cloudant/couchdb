@@ -369,7 +369,6 @@ init_state(Db, Fd, State, Header) ->
 
     {ShouldCommit, State#mrst{
         fd = Fd,
-        fd_monitor = erlang:monitor(process, Fd),
         fd_monitor=erlang:monitor(process, ioq:fd_pid(Fd)),
         update_seq = Seq,
         purge_seq = PurgeSeq,

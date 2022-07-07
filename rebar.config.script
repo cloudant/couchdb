@@ -146,7 +146,9 @@ SubDirs = [
 
 DepDescs = [
 %% Independent Apps
-{snappy,           "snappy",           {tag, "CouchDB-1.0.9"}},
+{khash,            "khash",            {tag, "1.1.0"}},
+{hqueue,           "hqueue",           {tag, "CouchDB-1.0.1-1"}},
+{snappy,           "snappy",           {tag, "CouchDB-1.0.8"}},
 
 %% %% Non-Erlang deps
 {fauxton,          {url, "https://github.com/apache/couchdb-fauxton"},

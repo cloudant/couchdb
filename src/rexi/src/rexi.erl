@@ -132,7 +132,8 @@ async_server_call(Server, Caller, Request) ->
 -spec reply(any()) -> any().
 reply(Reply) ->
     {Caller, Ref} = get(rexi_from),
-    erlang:send(Caller, {Ref, Reply}).
+    Cost = couch_cost:get_cost(),
+    erlang:send(Caller, {Ref,Reply,{cost,Cost}}).
 
 %% @equiv sync_reply(Reply, 300000)
 sync_reply(Reply) ->
@@ -217,7 +218,8 @@ stream(Msg, Limit, Timeout) ->
         {ok, Count} ->
             put(rexi_unacked, Count + 1),
             {Caller, Ref} = get(rexi_from),
-            erlang:send(Caller, {Ref, self(), Msg}),
+            Cost = couch_cost:get_cost(),
+            erlang:send(Caller, {Ref, self(), Msg, {cost, Cost}}),
             ok
     catch
         throw:timeout ->

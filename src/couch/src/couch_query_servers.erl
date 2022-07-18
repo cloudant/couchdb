@@ -529,6 +529,8 @@ filter_view(Db, DDoc, VName, Docs) ->
     {ok, Passes}.
 
 filter_docs(Req, Db, DDoc, FName, Docs) ->
+    couch_cost:inc_js_filter(),
+    couch_cost:inc_js_filtered_docs(length(Docs)),
     JsonReq =
         case Req of
             {json_req, JsonObj} ->

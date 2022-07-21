@@ -270,8 +270,8 @@ AddConfig = [
             couch_prometheus,
 
             %% extra
-            recon,
-            triq
+            recon %,
+            %%triq
         ]},
 
         {mode, prod},

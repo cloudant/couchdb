@@ -114,6 +114,66 @@ OptionalDeps = case WithProper of
         []
 end.
 
+
+APPS = [
+    %% stdlib
+    asn1,
+    compiler,
+    crypto,
+    inets,
+    runtime_tools,
+    sasl,
+    ssl,
+    syntax_tools,
+    xmerl,
+
+    %% couchdb
+    b64url,
+    bear,
+    chttpd,
+    config,
+    couch,
+    couch_epi,
+    couch_index,
+    couch_log,
+    couch_mrview,
+    couch_plugins,
+    couch_replicator,
+    couch_stats,
+    couch_tests,
+    couch_event,
+    couch_peruser,
+    couch_dist,
+    custodian,
+    ddoc_cache,
+    dreyfus,
+    ets_lru,
+    fabric,
+    folsom,
+    global_changes,
+    hyper,
+    ibrowse,
+    ioq,
+    jiffy,
+    jwtf,
+    ken,
+    khash,
+    mango,
+    mem3,
+    mochiweb,
+    rexi,
+    setup,
+    smoosh,
+    snappy,
+    %weatherreport,
+    couch_prometheus,
+
+    %% extra
+    recon %,
+    %%triq
+].
+
+
 AddConfig = [
     {require_otp_vsn, "23|24|25"},
     {deps_error_on_conflict, true},
@@ -197,16 +257,27 @@ AddConfig = [
         {application, weatherreport},
         {application, couch_epi}
     ]},
-    {profiles, [{test, [
-        {extra_src_dirs, [{"test", [{recursive, true}]}]},
-        {deps, [
-            % {b64url, {git, "https://github.com/apache/couchdb-b64url.git", {ref, "ef4fca0c8d18b963412fc16f5848e95944977927"}}},
-            % {ets_lru, {git, "https://github.com/apache/couchdb-ets-lru.git", {ref, "f1ca157d6f96c9edf343e280709085f9eed1e716"}}},
-            % {jiffy, {git, "https://github.com/apache/couchdb-jiffy.git", {ref, "9ea1b35b6e60ba21dfd4adbd18e7916a831fd7d4"}}},
-            % {config, {git, "https://github.com/jiahuili430/couchdb-config.git", {ref,"0571481ed314c77a6e7e44ec904afa0109860591"}}},
-            % {khash, {git, "https://github.com/jiahuili430/couchdb-khash", {ref, "ee87ab0c6bedf0b2b859a867afe5a4ce0ef422a2"}}}
-        ]}
-    ]}]},
+    {profiles, [
+        {test, [
+            {extra_src_dirs, [{"test", [{recursive, true}]}]},
+            {deps, [
+                % {b64url, {git, "https://github.com/apache/couchdb-b64url.git", {ref, "ef4fca0c8d18b963412fc16f5848e95944977927"}}},
+                % {ets_lru, {git, "https://github.com/apache/couchdb-ets-lru.git", {ref, "f1ca157d6f96c9edf343e280709085f9eed1e716"}}},
+                % {jiffy, {git, "https://github.com/apache/couchdb-jiffy.git", {ref, "9ea1b35b6e60ba21dfd4adbd18e7916a831fd7d4"}}},
+                % {config, {git, "https://github.com/jiahuili430/couchdb-config.git", {ref,"0571481ed314c77a6e7e44ec904afa0109860591"}}},
+                % {khash, {git, "https://github.com/jiahuili430/couchdb-khash", {ref, "ee87ab0c6bedf0b2b859a867afe5a4ce0ef422a2"}}}
+            ]}
+        ]},
+        {testdev, [
+            {relx, [
+                {dev_mode, true},
+                {include_erts, false}
+            ]}
+        ]},
+        {db1, [{relx, [{release, {'db1', "3.2.2"}, APPS}]}]},
+        {db2, [{relx, [{release, {'db2', "3.2.2"}, APPS}]}]},
+        {db3, [{relx, [{release, {'db3', "3.2.2"}, APPS}]}]}
+    ]},
     {dialyzer, [
         {plt_location, local},
         {plt_location, COUCHDB_ROOT},
@@ -216,63 +287,7 @@ AddConfig = [
         {warnings, [unmatched_returns, error_handling, race_conditions]}]},
     {post_hooks, [{compile, "escript support/build_js.escript"}]},
     {relx, [
-        {release, {couchdb, "3.2.2"}, [
-            %% stdlib
-            asn1,
-            compiler,
-            crypto,
-            inets,
-            runtime_tools,
-            sasl,
-            ssl,
-            syntax_tools,
-            xmerl,
-
-            %% couchdb
-            b64url,
-            bear,
-            chttpd,
-            config,
-            couch,
-            couch_epi,
-            couch_index,
-            couch_log,
-            couch_mrview,
-            couch_plugins,
-            couch_replicator,
-            couch_stats,
-            couch_tests,
-            couch_event,
-            couch_peruser,
-            couch_dist,
-            custodian,
-            ddoc_cache,
-            dreyfus,
-            ets_lru,
-            fabric,
-            folsom,
-            global_changes,
-            hyper,
-            ibrowse,
-            ioq,
-            jiffy,
-            jwtf,
-            ken,
-            khash,
-            mango,
-            mem3,
-            mochiweb,
-            rexi,
-            setup,
-            smoosh,
-            snappy,
-            weatherreport,
-            couch_prometheus,
-
-            %% extra
-            recon %,
-            %%triq
-        ]},
+        {release, {couchdb, "3.2.2"}, APPS},
 
         {mode, prod},
         {overlay_vars, "rel/couchdb.config"},
@@ -287,7 +302,7 @@ AddConfig = [
             {copy, "bin/couchjs", "bin/couchjs"},
             {copy, "share/server/main.js", "share/server/main.js"},
             {copy, "share/server/main-coffee.js", "share/server/main-coffee.js"},
-            {copy, "bin/weatherreport", "bin/weatherreport"},
+            %{copy, "bin/weatherreport", "bin/weatherreport"},
             {template, "rel/overlay/etc/default.ini", "etc/default.ini"},
             {template, "rel/overlay/etc/vm.args", "etc/vm.args"},
             {template, "rel/files/couchdb.in", "bin/couchdb"},

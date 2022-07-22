@@ -6,9 +6,10 @@
 
 -define(PROVIDER, boot_script).
 -define(NAMESPACE, ic).
-%%-define(DEPS, [{default, app_discovery}]).
-%%-define(DEPS, [{default, compile}]).
--define(DEPS, [{default, lock}]).
+%-define(DEPS, [{default, app_discovery}]).
+-define(DEPS, [{default, compile}]).
+%%-define(DEPS, [{default, lock}]).
+%-define(DEPS, []).
 
 %% ===================================================================
 %% Public API
@@ -30,13 +31,30 @@ init(State) ->
 -spec do(rebar_state:t()) -> {ok, rebar_state:t()} | {error, string()}.
 do(State) ->
     Config = rebar_state:get(State, relx, []),
-    %%io:format("~p~n", [rebar_state:current_app(State)]),
-    %%io:format("~p~n", [rebar_state:project_apps(State)]),
-    %%io:format("~p~n", [Config]),
-    %%io:format("PATHS: ~p~n", [code:get_path()]),
     {release, {Name, Version}, _Apps} = lists:keyfind(release, 1, Config),
-    adjust_path(State),
-    ReleaseSpec = release_spec(Config, Name, Version),
+    %%adjust_path(State),
+    ExtraApps = [
+        kernel,
+        stdlib,
+        asn1,
+        compiler,
+        crypto,
+        inets,
+        runtime_tools,
+        sasl,
+        public_key,
+        ssl,
+        syntax_tools,
+        xmerl,
+        tools
+    ],
+    Extra = [system_app(A) || A <- ExtraApps],
+    ReleaseSpec = {release,
+        {atom_to_list(Name), Version},
+        {erts, erlang:system_info(version)},
+        apps(State) ++ Extra
+    },
+    io:format("===~nReleaseSpec: ~p~n~n===", [ReleaseSpec]),
     ok = make_script(ReleaseSpec),
     {ok, State}.
 
@@ -48,26 +66,43 @@ format_error(Reason) ->
 %% Internal functions
 %% ===================================================================
 
-release_spec(RelXConfig, Name, RelVersion) ->
-    {ok, State} = rlx_config:to_state(RelXConfig),
-    Release = rlx_state:get_configured_release(State, Name, RelVersion),
-    {ok, RealizedRelease, _} = rlx_resolve:solve_release(
-        Release,
-        rlx_state:available_apps(State, #{})),
-    rlx_release:metadata(RealizedRelease).
+% release_spec(RelXConfig, Name, RelVersion) ->
+%     {ok, State} = rlx_config:to_state(RelXConfig),
+%     Release = rlx_state:get_configured_release(State, Name, RelVersion),
+%     {ok, RealizedRelease, _} = rlx_resolve:solve_release(
+%         Release,
+%         rlx_state:available_apps(State, #{})),
+%     rlx_release:metadata(RealizedRelease).
 
 make_script(ReleaseSpec) ->
     ok = rlx_file_utils:write_term("dev/devnode.rel", ReleaseSpec),
     Options = [{path,["_build/default/lib"]}, {outdir,"dev/"}],
     systools:make_script("dev/devnode", [{script_name, "start"} | Options]).
 
-adjust_path(State) ->
-    Apps = rebar_state:project_apps(State),
-    State2 = rebar_state:update_all_deps(State, Apps),
-    CodePaths = [rebar_app_info:ebin_dir(A) || A <- Apps],
-    State3 = rebar_state:update_code_paths(State2, all_deps, CodePaths),
-    %ListOfApps = [rebar_app_info:name(A) || A <- Apps],
-    %io:format("~p~n", [ListOfApps]),
-    %CodePaths = [rebar_app_info:ebin_dir(A) || A <- Apps],
-    %code:add_pathsa(CodePaths).
-    ok.
+% adjust_path(State) ->
+%     Apps = rebar_state:project_apps(State),
+%     State2 = rebar_state:update_all_deps(State, Apps),
+%     CodePaths = [rebar_app_info:ebin_dir(A) || A <- Apps],
+%     State3 = rebar_state:update_code_paths(State2, all_deps, CodePaths),
+%     %ListOfApps = [rebar_app_info:name(A) || A <- Apps],
+%     %io:format("~p~n", [ListOfApps]),
+%     %CodePaths = [rebar_app_info:ebin_dir(A) || A <- Apps],
+%     %code:add_pathsa(CodePaths).
+%     ok.
+
+apps(State) ->
+    Apps = rebar_state:project_apps(State)
+    ++ rebar_state:all_deps(State),
+    [{binary_to_atom(rebar_app_info:name(AppInfo)), rebar_app_info:vsn(AppInfo)}
+    || AppInfo <- Apps].
+
+system_app(App) ->
+    case application:get_key(App, vsn) of
+        undefined ->
+            application:load(App),
+            {ok, Vsn} = application:get_key(App, vsn),
+            application:unload(App),
+            {App, Vsn};
+        {ok, Vsn} ->
+            {App, Vsn}
+    end.

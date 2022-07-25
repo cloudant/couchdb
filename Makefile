@@ -210,7 +210,7 @@ python-black-update: .venv/bin/black
 .PHONY: elixir
 elixir: export COUCHDB_TEST_ADMIN_PARTY_OVERRIDE=1
 elixir: elixir-init elixir-check-formatted elixir-credo devclean
-	@echo dev/run "$(TEST_OPTS)" -a adm:pass -n 1 \
+	@dev/run "$(TEST_OPTS)" -a adm:pass -n 1 \
 		--enable-erlang-views \
 		--locald-config test/elixir/test/config/test-config.ini \
 		--no-eval 'MIX_ENV=integration mix test --trace --exclude without_quorum_test --exclude with_quorum_test $(EXUNIT_OPTS)'

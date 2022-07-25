@@ -32,29 +32,11 @@ init(State) ->
 do(State) ->
     Config = rebar_state:get(State, relx, []),
     {release, {Name, Version}, _Apps} = lists:keyfind(release, 1, Config),
-    %%adjust_path(State),
-    ExtraApps = [
-        kernel,
-        stdlib,
-        asn1,
-        compiler,
-        crypto,
-        inets,
-        runtime_tools,
-        sasl,
-        public_key,
-        ssl,
-        syntax_tools,
-        xmerl,
-        tools
-    ],
-    Extra = [system_app(A) || A <- ExtraApps],
     ReleaseSpec = {release,
         {atom_to_list(Name), Version},
         {erts, erlang:system_info(version)},
-        apps(State) ++ Extra
+        apps(State)
     },
-    io:format("===~nReleaseSpec: ~p~n~n===", [ReleaseSpec]),
     ok = make_script(ReleaseSpec),
     {ok, State}.
 
@@ -62,39 +44,31 @@ do(State) ->
 format_error(Reason) ->
     io_lib:format("~p", [Reason]).
 
-%% ===================================================================
-%% Internal functions
-%% ===================================================================
-
-% release_spec(RelXConfig, Name, RelVersion) ->
-%     {ok, State} = rlx_config:to_state(RelXConfig),
-%     Release = rlx_state:get_configured_release(State, Name, RelVersion),
-%     {ok, RealizedRelease, _} = rlx_resolve:solve_release(
-%         Release,
-%         rlx_state:available_apps(State, #{})),
-%     rlx_release:metadata(RealizedRelease).
-
 make_script(ReleaseSpec) ->
     ok = rlx_file_utils:write_term("dev/devnode.rel", ReleaseSpec),
     Options = [{path,["_build/default/lib"]}, {outdir,"dev/"}],
     systools:make_script("dev/devnode", [{script_name, "start"} | Options]).
 
-% adjust_path(State) ->
-%     Apps = rebar_state:project_apps(State),
-%     State2 = rebar_state:update_all_deps(State, Apps),
-%     CodePaths = [rebar_app_info:ebin_dir(A) || A <- Apps],
-%     State3 = rebar_state:update_code_paths(State2, all_deps, CodePaths),
-%     %ListOfApps = [rebar_app_info:name(A) || A <- Apps],
-%     %io:format("~p~n", [ListOfApps]),
-%     %CodePaths = [rebar_app_info:ebin_dir(A) || A <- Apps],
-%     %code:add_pathsa(CodePaths).
-%     ok.
-
 apps(State) ->
     Apps = rebar_state:project_apps(State)
     ++ rebar_state:all_deps(State),
-    [{binary_to_atom(rebar_app_info:name(AppInfo)), rebar_app_info:vsn(AppInfo)}
-    || AppInfo <- Apps].
+    ProjectAppsVsn = [
+        {binary_to_atom(rebar_app_info:name(AppInfo)), rebar_app_info:vsn(AppInfo)}
+        || AppInfo <- Apps],
+    AppNames = [A || {A, _} <- ProjectAppsVsn],
+
+    Dependencies = lists:foldl(fun(App, Acc) ->
+        lists:foldl(fun(A, InAcc) ->
+            case maps:is_key(A, InAcc) of
+                true -> InAcc;
+                false -> maps:put(A, true, InAcc)
+            end
+        end, Acc, rebar_app_info:applications(App))
+    end, #{}, Apps),
+
+    SystemApps = lists:usort(maps:keys(Dependencies) -- AppNames),
+    SystemAppsVsn = [system_app(A) || A <- SystemApps],
+    ProjectAppsVsn ++ SystemAppsVsn.
 
 system_app(App) ->
     case application:get_key(App, vsn) of

@@ -221,21 +221,18 @@ elixir-init: config.erl
 	@mix local.rebar --force && mix local.hex --force && mix deps.get
 
 .PHONY: elixir-cluster-without-quorum
-elixir-cluster-without-quorum: export MIX_ENV=integration
 elixir-cluster-without-quorum: elixir-init elixir-check-formatted elixir-credo devclean
 	@dev/run -n 3 -q -a adm:pass \
 		--degrade-cluster 2 \
-		--no-eval 'mix test --trace --only without_quorum_test $(EXUNIT_OPTS)'
+		--no-eval 'MIX_ENV=integration mix test --trace --only without_quorum_test $(EXUNIT_OPTS)'
 
 .PHONY: elixir-cluster-with-quorum
-elixir-cluster-with-quorum: export MIX_ENV=integration
 elixir-cluster-with-quorum: elixir-init elixir-check-formatted elixir-credo devclean
 	@dev/run -n 3 -q -a adm:pass \
 		--degrade-cluster 1 \
-		--no-eval 'mix test --trace --only with_quorum_test $(EXUNIT_OPTS)'
+		--no-eval 'MIX_ENV=integration mix test --trace --only with_quorum_test $(EXUNIT_OPTS)'
 
 .PHONY: elixir-suite
-elixir-suite: export MIX_ENV=integration
 elixir-suite: export COUCHDB_TEST_ADMIN_PARTY_OVERRIDE=1
 elixir-suite: elixir-init elixir-check-formatted elixir-credo devclean
 	@dev/run -n 1 -q -a adm:pass \
@@ -243,7 +240,7 @@ elixir-suite: elixir-init elixir-check-formatted elixir-credo devclean
 		--no-join \
 		--locald-config test/elixir/test/config/test-config.ini \
 		--erlang-config rel/files/eunit.config \
-		--no-eval 'mix test --trace --include test/elixir/test/config/suite.elixir --exclude test/elixir/test/config/skip.elixir'
+		--no-eval 'MIX_ENV=integration mix test --trace --include test/elixir/test/config/suite.elixir --exclude test/elixir/test/config/skip.elixir'
 
 .PHONY: elixir-check-formatted
 elixir-check-formatted: elixir-init

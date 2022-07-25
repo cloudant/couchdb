@@ -46,7 +46,7 @@ format_error(Reason) ->
 
 make_boot_script(ReleaseSpec) ->
     ok = rlx_file_utils:write_term("dev/devnode.rel", ReleaseSpec),
-    Options = [{path,["_build/default/lib"]}, {outdir,"dev/"}],
+    Options = [{outdir,"dev/"}, local],
     systools:make_script("dev/devnode", [{script_name, "devnode"} | Options]).
 
 apps(State) ->

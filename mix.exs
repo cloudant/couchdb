@@ -72,7 +72,7 @@ defmodule CouchDBTest.Mixfile do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger, :couch_log, :config],
+      extra_applications: [:logger],
       applications: [:httpotion]
     ]
   end
@@ -85,14 +85,27 @@ defmodule CouchDBTest.Mixfile do
   # Run "mix help deps" to learn about dependencies.
   defp deps() do
     [
-      {:junit_formatter, "~> 3.0", only: [:dev, :test, :integration]},
-      {:httpotion, ">= 3.1.3", only: [:dev, :test, :integration], runtime: false},
+      {:b64url, path: path("b64url"), override: true},
+      {:bear, path: path("bear"), override: true},
+      {:config, path: path("config"), override: true},
+      {:proper, path: path("proper"), override: true},
+      {:ets_lru, path: path("ets_lru"), override: true},
+      {:mochiweb, path: path("mochiweb"), override: true},
+      {:meck, path: path("meck"), override: true},
+      {:khash, path: path("khash"), override: true},
+      {:snappy, path: path("snappy"), override: true},
+      {:recon, path: path("recon"), override: true},
+      {:folsom, path: path("folsom"), override: true},
+      {:hyper, path: path("hyper"), override: true},
+      {:couch, path: Path.expand("src/couch", __DIR__)},
+      {:couch_log, path: Path.expand("src/couch_log", __DIR__)},
+      {:credo, "~> 1.6.4", only: [:dev, :test, :integration], runtime: false},
       {:excoveralls, "~> 0.12", only: :test},
-      {:b64url, path: path("b64url")},
-      {:jiffy, path: path("jiffy")},
-      {:jwtf, path: Path.expand("src/jwtf", __DIR__)},
+      {:httpotion, ">= 3.1.3", only: [:dev, :test, :integration], runtime: false},
       {:ibrowse, path: path("ibrowse"), override: true},
-      {:credo, "~> 1.6.4", only: [:dev, :test, :integration], runtime: false}
+      {:jiffy, path: path("jiffy"), override: true},
+      {:junit_formatter, "~> 3.0", only: [:dev, :test, :integration]},
+      {:jwtf, path: Path.expand("src/jwtf", __DIR__)}
     ]
   end
 
@@ -139,7 +152,7 @@ defmodule CouchDBTest.Mixfile do
       "mochiweb",
       "snappy",
       "rebar",
-      "proper",
+      # "proper",
       "mochiweb",
       "meck",
       "khash",

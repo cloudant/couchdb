@@ -278,10 +278,11 @@ def check_beams(ctx):
 
 @log("Ensure Erlang boot script exists")
 def check_boot_script(ctx):
-    if not os.path.exists(os.path.join(ctx["devdir"], "devnode.boot")):
-        env = os.environ.copy()
-        env["ERL_LIBS"] = os.path.join(ctx["rootdir"], "src")
-        sp.check_call(["escript", "make_boot_script"], env=env, cwd=ctx["devdir"])
+    # if not os.path.exists(os.path.join(ctx["devdir"], "devnode.boot")):
+    #     env = os.environ.copy()
+    #     env["ERL_LIBS"] = os.path.join(ctx["rootdir"], "src")
+    #     sp.check_call(["escript", "make_boot_script"], env=env, cwd=ctx["devdir"])
+    pass
 
 
 @log("Prepare configuration files")

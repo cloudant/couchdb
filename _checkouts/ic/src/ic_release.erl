@@ -37,17 +37,17 @@ do(State) ->
         {erts, erlang:system_info(version)},
         apps(State)
     },
-    ok = make_script(ReleaseSpec),
+    ok = make_boot_script(ReleaseSpec),
     {ok, State}.
 
 -spec format_error(any()) -> iolist().
 format_error(Reason) ->
     io_lib:format("~p", [Reason]).
 
-make_script(ReleaseSpec) ->
+make_boot_script(ReleaseSpec) ->
     ok = rlx_file_utils:write_term("dev/devnode.rel", ReleaseSpec),
     Options = [{path,["_build/default/lib"]}, {outdir,"dev/"}],
-    systools:make_script("dev/devnode", [{script_name, "start"} | Options]).
+    systools:make_script("dev/devnode", [{script_name, "devnode"} | Options]).
 
 apps(State) ->
     Apps = rebar_state:project_apps(State)

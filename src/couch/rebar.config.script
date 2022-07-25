@@ -234,7 +234,11 @@ PlatformDefines = [
    {platform_define, "win32", 'WINDOWS'}
 ].
 
-LibDir = "../../_build/default/lib/".
+%% We need an optimized absolute path here for (mix.exs compatibility)
+%% There are no functions in filename which would return it
+%% So we use direname multiple times
+COUCHDB_ROOT = filename:dirname(filename:dirname(filename:dirname(filename:absname(SCRIPT)))).
+LibDir = filename:join(COUCHDB_ROOT, "_build/default/lib") ++ "/".
 
 AddConfig = [
     {port_specs, PortSpecs},
@@ -242,13 +246,13 @@ AddConfig = [
     {deps, [
         {config, {path, LibDir ++ "config"}},
         {proper, {path, LibDir ++ "proper"}},
-        {bear, {path, LibDir ++ "bear"}},
+        %%{bear, {path, LibDir ++ "bear"}},
         {b64url, {path, LibDir ++ "b64url"}},
         {ets_lru, {path, LibDir ++ "ets_lru"}},
         {ibrowse, {path, LibDir ++ "ibrowse"}},
         {jiffy, {path, LibDir ++ "jiffy"}},
         {mochiweb, {path, LibDir ++ "mochiweb"}},
-        {meck, {path, LibDir ++ "meck"}},
+        %{meck, {path, LibDir ++ "meck"}},
         {recon, {path, LibDir ++ "recon"}},
         {khash, {path, LibDir ++ "khash"}},
         {snappy, {path, LibDir ++ "snappy"}},

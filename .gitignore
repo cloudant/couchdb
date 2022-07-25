@@ -132,4 +132,3 @@ test/javascript/junit.xml
 /src/junit_formatter/
 
 .idea
-*.lock

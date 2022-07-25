@@ -3,7 +3,7 @@
        {ref,"ef4fca0c8d18b963412fc16f5848e95944977927"}},
   0},
  {<<"bear">>,
-  {git,"https://github.com/apache/couchdb-bear.git",
+  {git,"https://github.com/jiahuili430/couchdb-bear.git",
        {ref,"da1e52678d628b394d4bf241ccbe410ab90fd1e3"}},
   1},
  {<<"config">>,

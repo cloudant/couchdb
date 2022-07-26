@@ -19,6 +19,12 @@ include version.mk
 REBAR3?=$(shell echo `pwd`/bin/rebar3)
 ERLFMT?=$(shell echo `pwd`/bin/erlfmt)
 
+ifeq ($(with_docs), 1)
+DOCS_PYTHON = _build/docs/lib/docs/src/conf.py _build/docs/lib/docs/ext/*.py
+else
+DOCS_PYTHON =
+endif
+
 # Handle the following scenarios:
 #   1. When building from a tarball, use version.mk.
 #   2. When building from a clean release tag (#.#.#), use that tag.
@@ -103,7 +109,7 @@ help:
 # target: couch - Build CouchDB core, use ERL_COMPILER_OPTIONS to provide custom compiler's options
 couch: config.erl
 	@# FIXME
-	@[ -e bin/couchjs ] || COUCHDB_VERSION=$(COUCHDB_VERSION) COUCHDB_GIT_SHA=$(COUCHDB_GIT_SHA) $(REBAR3) compile
+	@[ -e bin/couchjs ] || COUCHDB_VERSION=$(COUCHDB_VERSION) COUCHDB_GIT_SHA=$(COUCHDB_GIT_SHA) $(REBAR3) ic boot_script
 	@cp src/couch/priv/couchjs bin/
 
 
@@ -112,7 +118,7 @@ couch: config.erl
 ifeq ($(IN_RELEASE), true)
 docs: share/docs/html
 else
-docs: src/docs/build
+docs: _build/docs/lib/docs/build
 endif
 
 .PHONY: fauxton
@@ -197,7 +203,7 @@ python-black: .venv/bin/black
 	@python3 -c "import sys; exit(1 if sys.version_info >= (3,6) else 0)" || \
 		LC_ALL=C.UTF-8 LANG=C.UTF-8 .venv/bin/black --check \
 		--exclude="build/|buck-out/|dist/|_build/|\.git/|\.hg/|\.mypy_cache/|\.nox/|\.tox/|\.venv/|src/erlfmt|src/jiffy|src/rebar/pr2relnotes.py|src/fauxton" \
-		build-aux/*.py dev/run dev/format_*.py src/mango/test/*.py src/docs/src/conf.py src/docs/ext/*.py .
+		build-aux/*.py dev/run dev/format_*.py src/mango/test/*.py $(DOCS_PYTHON) .
 
 python-black-update: .venv/bin/black
 	@python3 -c "import sys; exit(1 if sys.version_info < (3,6) else 0)" || \
@@ -205,7 +211,7 @@ python-black-update: .venv/bin/black
 	@python3 -c "import sys; exit(1 if sys.version_info >= (3,6) else 0)" || \
 		LC_ALL=C.UTF-8 LANG=C.UTF-8 .venv/bin/black \
 		--exclude="build/|buck-out/|dist/|_build/|\.git/|\.hg/|\.mypy_cache/|\.nox/|\.tox/|\.venv/|src/rebar/pr2relnotes.py|src/fauxton" \
-		build-aux/*.py dev/run src/mango/test/*.py src/docs/src/conf.py src/docs/ext/*.py .
+		build-aux/*.py dev/run src/mango/test/*.py $(DOCS_PYTHON) .
 
 .PHONY: elixir
 elixir: export COUCHDB_TEST_ADMIN_PARTY_OVERRIDE=1
@@ -399,7 +405,7 @@ ifneq ($(IN_RELEASE), true)
 # copied sources, generated docs, or fauxton
 	@rm -rf rel/couchdb
 	@rm -rf share/www
-	@rm -rf src/docs
+	@rm -rf _build/docs
 endif
 
 
@@ -423,9 +429,10 @@ config.erl:
 	@false
 
 
-src/docs/build:
+_build/docs/lib/docs/build:
 ifeq ($(with_docs), 1)
-	@cd src/docs; $(MAKE)
+	@rebar3 as docs, get-deps
+	@cd _build/docs/lib/docs; $(MAKE)
 endif
 
 

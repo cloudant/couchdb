@@ -114,105 +114,66 @@ OptionalDeps = case WithProper of
         []
 end.
 
+DepsConfig = os:getenv("COUCHDB_DEPS", filename:join([COUCHDB_ROOT, "deps.config"])).
+Deps = case filelib:is_file(DepsConfig) of
+    true ->
+        {ok, [DepsResult]} = file:consult(DepsConfig),
+        DepsResult;
+    false ->
+        rebar_api:abort(lists:flatten(io_lib:format("Deps file '~s' not found~n", [DepsConfig])))
+end.
 
-APPS = [
-    %% stdlib
-    asn1,
-    compiler,
-    crypto,
-    inets,
-    runtime_tools,
-    sasl,
-    ssl,
-    syntax_tools,
-    xmerl,
+InProfile = fun(Profile, Specs) ->
+    lists:foldl(fun(Spec, Acc) ->
+        io:format("Spec = ~p~n", [Spec]),
+        Profiles = element(size(Spec), Spec),
+        case lists:member(Profile, Profiles) of
+            true -> [Spec | Acc];
+            false -> Acc
+        end
+    end, [], Specs)
+end.
 
-    %% couchdb
-    b64url,
-    bear,
-    chttpd,
-    config,
-    couch,
-    couch_epi,
-    couch_index,
-    couch_log,
-    couch_mrview,
-    couch_plugins,
-    couch_replicator,
-    couch_stats,
-    couch_tests,
-    couch_event,
-    couch_peruser,
-    couch_dist,
-    custodian,
-    ddoc_cache,
-    dreyfus,
-    ets_lru,
-    fabric,
-    folsom,
-    global_changes,
-    hyper,
-    ibrowse,
-    ioq,
-    jiffy,
-    jwtf,
-    ken,
-    khash,
-    mango,
-    mem3,
-    mochiweb,
-    rexi,
-    setup,
-    smoosh,
-    snappy,
-    %weatherreport,
-    couch_prometheus,
+ReleaseApps = [
+    element(1, Spec)
+    || Spec <- InProfile(release,
+        maps:get(extra_apps, Deps, [])
+        ++ maps:get(project_apps, Deps, [])
+        ++ maps:get(system_apps, Deps, [])
+    )].
 
-    %% extra
-    recon %,
-    %%triq
-].
+BaseUrl = "https://github.com/apache/".
 
+MakeDep = fun
+    ({AppName, {url, Url}, Version, _Profiles}) ->
+        {AppName, {git, Url, Version}};
+    ({AppName, RepoName, Version, _Profiles}) ->
+        Url = BaseUrl ++ "couchdb-" ++ RepoName ++ ".git",
+        {AppName, {git, Url, Version}}
+end.
+
+ProjectApps = [element(1, AppSpec) || AppSpec <- maps:get(project_apps, Deps, [])].
+
+%% Rebar3 has limitation that it can only test project applications.
+%% I.e. applications in the same repository.
+%% We cannot run tests for applications pulled in as a dependency.
+EUnitTests = [{application, App} || App <- ProjectApps].
+
+ProjectIncludeDirs = lists:filter(
+    fun filelib:is_dir/1,
+    [filename:join(["src", App, "include"]) || App <- ProjectApps]),
+ProjectIncludes = [{i, Dir} || Dir <- ProjectIncludeDirs].
 
 AddConfig = [
     {require_otp_vsn, "23|24|25"},
     {deps_error_on_conflict, true},
-    {deps, [
-        {proper, {git, "https://github.com/proper-testing/proper", {ref, "cfc29e7615ec0a93ac0be619d33609c2139b57fd"}}},
-        {config, {git, "https://github.com/jiahuili430/couchdb-config.git", {ref,"0571481ed314c77a6e7e44ec904afa0109860591"}}},
-        {bear, {git, "https://github.com/jiahuili430/couchdb-bear.git", {ref,"da1e52678d628b394d4bf241ccbe410ab90fd1e3"}}},
-        {b64url, {git, "https://github.com/apache/couchdb-b64url.git", {ref, "ef4fca0c8d18b963412fc16f5848e95944977927"}}},
-        {ets_lru, {git, "https://github.com/apache/couchdb-ets-lru.git", {ref, "f1ca157d6f96c9edf343e280709085f9eed1e716"}}},
-        {ibrowse, {git, "https://github.com/apache/couchdb-ibrowse.git", {ref, "a62d4a6d236729e5869842c70447ad46b3409912"}}},
-        {jiffy, {git, "https://github.com/apache/couchdb-jiffy.git", {ref, "9ea1b35b6e60ba21dfd4adbd18e7916a831fd7d4"}}},
-        {mochiweb, {git, "https://github.com/apache/couchdb-mochiweb.git", {ref, "845803a5defa693c546ea7250818f226a52d2891"}}},
-        {meck, {git, "https://github.com/apache/couchdb-meck.git", {ref, "cc47aab4b64a46a5409c1a93353d44a367b41454"}}},
-        {recon, {git, "https://github.com/apache/couchdb-recon", {ref, "34194da6d9f8ed25f274e0ebb098dc9e95bcf547"}}},
-        {khash, {git, "https://github.com/jiahuili430/couchdb-khash", {ref, "4a0e07f7a2870a543510db355d6c2e9c3c1d84b1"}}},
-        {snappy, {git, "https://github.com/jiahuili430/couchdb-snappy.git", {ref, "536286ada94a3aeee6042d047f3a9c369a5f1475"}}},
-        {folsom, {git, "https://github.com/jiahuili430/couchdb-folsom.git", {ref, "87f778c1efb11e9caebba328a2cba05453db668c"}}},
-        {hyper, {git, "https://github.com/jiahuili430/couchdb-hyper.git", {ref, "69fa387bc9cd67dbe2f4649b4ebd2239e879f239"}}}
-    ]},
+    {deps, lists:map(MakeDep, maps:get(extra_apps, Deps, []))},
     {plugins, [ic, erlfmt, rebar3_path_deps]},
     {erlfmt, [write]},
     {erl_opts, [
         {i, "../"},
-        {i, "src/couch_tests/include"},
-        {i, "src/mochiweb/include"},
-        {i, "src/rexi/include"},
-        {i, "src/proper/include"},
-        {i, "src/folsom/include"},
-        {i, "src/mem3/include"},
-        {i, "src/couch_mrview/include"},
-        {i, "src/couch/include"},
-        {i, "src/couch_replicator/include"},
-        {i, "src/meck/test/include"},
-        {i, "src/couch_log/include"},
-        {i, "src/dreyfus/include"},
-        {i, "src/chttpd/include"},
-        {i, "src/ibrowse/include"},
-        {i, "src/fabric/include"},
         {d, 'COUCHDB_ERLANG_VERSION', VerString}
+        | ProjectIncludes
     ]},
     {eunit_opts, [
         verbose,
@@ -220,52 +181,15 @@ AddConfig = [
         {report, {eunit_surefire, [{dir, "_build/test"}]}}
     ]},
     {project_app_dirs, ["src/*"]},
-    {eunit_tests, [
-        %% Here we can only specify applications which are in the same repository
-        %% we cannot run tests for applications pulled in as a dependency
-        {application, chttpd},
-        {application, couch},
-        {application, couch_dist},
-        {application, couch_epi},
-        {application, couch_event},
-        {application, couch_index},
-        {application, couch_log},
-        {application, couch_mrview},
-        {application, couch_peruser},
-        {application, couch_plugins},
-        {application, couch_prometheus},
-        {application, couch_pse_tests},
-        {application, couch_replicator},
-        {application, couch_stats},
-        {application, couch_tests},
-        {application, custodian},
-        {application, ddoc_cache},
-        {application, dreyfus},
-        {application, fabric},
-        {application, global_changes},
-        {application, ioq},
-        {application, jwtf},
-        {application, ken},
-        {application, mango},
-        {application, mem3},
-        {application, rexi},
-        {application, setup},
-        {application, smoosh},
-        {application, weatherreport}
-    ]},
+    %% Here we can only specify applications which are in the same repository
+    %% we cannot run tests for applications pulled in as a dependency
+    {eunit_tests, EUnitTests},
     {profiles, [
         {docs, [
             {docs, {git, "https://github.com/apache/couchdb-documentation", {ref, "ad82a485350889b64a53a646a27aa03e7d076b64"}}}
         ]},
         {test, [
-            {extra_src_dirs, [{"test", [{recursive, true}]}]},
-            {deps, [
-                % {b64url, {git, "https://github.com/apache/couchdb-b64url.git", {ref, "ef4fca0c8d18b963412fc16f5848e95944977927"}}},
-                % {ets_lru, {git, "https://github.com/apache/couchdb-ets-lru.git", {ref, "f1ca157d6f96c9edf343e280709085f9eed1e716"}}},
-                % {jiffy, {git, "https://github.com/apache/couchdb-jiffy.git", {ref, "9ea1b35b6e60ba21dfd4adbd18e7916a831fd7d4"}}},
-                % {config, {git, "https://github.com/jiahuili430/couchdb-config.git", {ref,"0571481ed314c77a6e7e44ec904afa0109860591"}}},
-                % {khash, {git, "https://github.com/jiahuili430/couchdb-khash", {ref, "ee87ab0c6bedf0b2b859a867afe5a4ce0ef422a2"}}}
-            ]}
+            {extra_src_dirs, [{"test", [{recursive, true}]}]}
         ]},
         {testdev, [
             {relx, [
@@ -273,9 +197,9 @@ AddConfig = [
                 {include_erts, false}
             ]}
         ]},
-        {db1, [{relx, [{release, {'db1', "3.2.2"}, APPS}]}]},
-        {db2, [{relx, [{release, {'db2', "3.2.2"}, APPS}]}]},
-        {db3, [{relx, [{release, {'db3', "3.2.2"}, APPS}]}]}
+        {db1, [{relx, [{release, {'db1', "3.2.2"}, ReleaseApps}]}]},
+        {db2, [{relx, [{release, {'db2', "3.2.2"}, ReleaseApps}]}]},
+        {db3, [{relx, [{release, {'db3', "3.2.2"}, ReleaseApps}]}]}
     ]},
     {dialyzer, [
         {plt_location, local},
@@ -286,8 +210,7 @@ AddConfig = [
         {warnings, [unmatched_returns, error_handling, race_conditions]}]},
     {post_hooks, [{compile, "escript support/build_js.escript"}]},
     {relx, [
-        {release, {couchdb, "3.2.2"}, APPS},
-
+        {release, {couchdb, "3.2.2"}, ReleaseApps},
         {mode, prod},
         {overlay_vars, "rel/couchdb.config"},
         {sys_config, "rel/files/sys.config"},
@@ -309,6 +232,8 @@ AddConfig = [
         ]}
     ]}
 ].
+
+io:format("AddConfig = ~p~n", [AddConfig]).
 
 lists:foldl(fun({K, V}, CfgAcc) ->
     case lists:keyfind(K, 1, CfgAcc) of

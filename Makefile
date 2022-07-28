@@ -107,10 +107,11 @@ help:
 
 .PHONY: couch
 # target: couch - Build CouchDB core, use ERL_COMPILER_OPTIONS to provide custom compiler's options
-couch: config.erl
-	@# FIXME
-	@[ -e bin/couchjs ] || COUCHDB_VERSION=$(COUCHDB_VERSION) COUCHDB_GIT_SHA=$(COUCHDB_GIT_SHA) $(REBAR3) ic boot_script
-	@cp src/couch/priv/couchjs bin/
+couch: bin/couchjs
+
+bin/couchjs: config.erl
+	COUCHDB_VERSION=$(COUCHDB_VERSION) COUCHDB_GIT_SHA=$(COUCHDB_GIT_SHA) $(REBAR3) ic boot_script
+	@cp src/couch/priv/couchjs $@
 
 
 .PHONY: docs
@@ -128,9 +129,11 @@ fauxton: share/www
 
 .PHONY: escriptize
 # target: escriptize - Build CLI tools
-escriptize: couch
-	@[ -e bin/weatherreport ] || COUCHDB_VERSION=$(COUCHDB_VERSION) COUCHDB_GIT_SHA=$(COUCHDB_GIT_SHA) $(REBAR3) escriptize -a weatherreport
-	@cp _build/default/bin/weatherreport bin/weatherreport
+escriptize: bin/weatherreport
+
+bin/weatherreport: bin/couchjs src/weatherreport
+	COUCHDB_VERSION=$(COUCHDB_VERSION) COUCHDB_GIT_SHA=$(COUCHDB_GIT_SHA) $(REBAR3) escriptize -a weatherreport
+	@cp _build/default/bin/weatherreport $@
 
 
 ################################################################################
@@ -313,7 +316,7 @@ weatherreport-test: devclean escriptize
 ################################################################################
 
 .PHONY: dialyzer
-# target: dialyze - Analyze the code for discrepancies
+# target: dialyzer - Analyze the code for discrepancies
 dialyzer: .rebar
 	@$(REBAR3) -r dialyzer $(DIALYZE_OPTS)
 
@@ -374,7 +377,7 @@ install: release
 	@echo
 	@echo "    To install CouchDB into your system, copy the rel/couchdb"
 	@echo "    to your desired installation location. For example:"
-	@echo "    cp -r rel/couchdb /usr/local/lib"
+	@echo "    cp -r _build/default/rel/couchdb /usr/local/lib"
 	@echo
 
 ################################################################################

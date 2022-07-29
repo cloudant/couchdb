@@ -146,10 +146,10 @@ BaseUrl = "https://github.com/apache/".
 
 MakeDep = fun
     ({AppName, {url, Url}, Version, _Profiles}) ->
-        {AppName, {git, Url, Version}};
+        {AppName, {dep, {git, Url, Version}}};
     ({AppName, RepoName, Version, _Profiles}) ->
         Url = BaseUrl ++ "couchdb-" ++ RepoName ++ ".git",
-        {AppName, {git, Url, Version}}
+        {AppName, {dep, {git, Url, Version}}}
 end.
 
 ProjectApps = [element(1, AppSpec) || AppSpec <- maps:get(project_apps, Deps, [])].
@@ -170,6 +170,7 @@ AddConfig = [
     {deps, lists:map(MakeDep, maps:get(extra_apps, Deps, []))},
     {plugins, [ic, erlfmt, rebar3_path_deps]},
     {erlfmt, [write]},
+    {extra_apps_dir, "src"},
     {erl_opts, [
         {i, "../"},
         {d, 'COUCHDB_ERLANG_VERSION', VerString}

@@ -115,12 +115,19 @@ update_gauge(Name, Value) ->
 
 -spec notify_existing_metric(any(), any(), any()) -> response().
 notify_existing_metric(Name, Op, Type) ->
-    try
-        ok = folsom_metrics:notify_existing_metric(Name, Op, Type)
-    catch
-        _:_ ->
-            error_logger:error_msg("unknown metric: ~p", [Name]),
-            {error, unknown_metric}
+    case list_to_existing_atom(config:get("couchdb", "skip_metrics", "false")) of
+        true ->
+            ok;
+        Type ->
+            ok;
+        false ->
+            try
+                ok = folsom_metrics:notify_existing_metric(Name, Op, Type)
+            catch
+                _:_ ->
+                    error_logger:error_msg("unknown metric: ~p", [Name]),
+                    {error, unknown_metric}
+            end
     end.
 
 -spec sample_type(any(), atom()) -> stat().

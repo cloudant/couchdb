@@ -190,7 +190,6 @@ pread_iolist(Fd, Pos) ->
             case ioq:call(Fd, {pread_iolist, Pos}, erlang:get(io_priority)) of
                 {ok, IoList, Checksum} ->
                     {ok, verify_checksum(Fd, Pos, IoList, Checksum, false)};
-                    {ok, verify_md5(Fd, Pos, IoList, Md5)};
                 Error ->
                     Error
             end
@@ -452,42 +451,8 @@ init({Filepath, Options, ReturnPid, Ref}) ->
             undefined
     end,
     case lists:member(create, Options) of
-    true ->
-        filelib:ensure_dir(Filepath),
-        case file:open(Filepath, OpenOptions) of
-        {ok, Fd} ->
-            %% Save Fd in process dictionary for debugging purposes
-            put(couch_file_fd, {Fd, Filepath}),
-            {ok, Length} = file:position(Fd, eof),
-            case Length > 0 of
-            true ->
-                % this means the file already exists and has data.
-                % FYI: We don't differentiate between empty files and non-existant
-                % files here.
-                case lists:member(overwrite, Options) of
-                true ->
-                    {ok, 0} = file:position(Fd, 0),
-                    ok = file:truncate(Fd),
-                    ok = file:sync(Fd),
-                    maybe_track_open_os_files(Options),
-                    erlang:send_after(?INITIAL_WAIT, self(), maybe_close),
-                    {ok, #file{fd=Fd, is_sys=IsSys, pread_limit=Limit, tab=Tab}};
-                false ->
-                    ok = file:close(Fd),
-                    init_status_error(ReturnPid, Ref, {error, eexist})
-                end;
-            false ->
-                maybe_track_open_os_files(Options),
-                erlang:send_after(?INITIAL_WAIT, self(), maybe_close),
-                {ok, #file{fd=Fd, is_sys=IsSys, pread_limit=Limit, tab=Tab}}
-            end;
-        Error ->
-            init_status_error(ReturnPid, Ref, Error)
-        end;
-    false ->
-        % open in read mode first, so we don't create the file if it doesn't exist.
-        case file:open(Filepath, [read, raw]) of
-        {ok, Fd_Read} ->
+        true ->
+            filelib:ensure_dir(Filepath),
             case file:open(Filepath, OpenOptions) of
                 {ok, Fd} ->
                     %% Save Fd in process dictionary for debugging purposes
@@ -518,9 +483,25 @@ init({Filepath, Options, ReturnPid, Ref}) ->
                 Error ->
                     init_status_error(ReturnPid, Ref, Error)
             end;
-        Error ->
-            init_status_error(ReturnPid, Ref, Error)
-        end
+        false ->
+            % open in read mode first, so we don't create the file if it doesn't exist.
+            case file:open(Filepath, [read, raw]) of
+                {ok, Fd_Read} ->
+                    case file:open(Filepath, OpenOptions) of
+                        {ok, Fd} ->
+                            %% Save Fd in process dictionary for debugging purposes
+                            put(couch_file_fd, {Fd, Filepath}),
+                            ok = file:close(Fd_Read),
+                            maybe_track_open_os_files(Options),
+                            {ok, Eof} = file:position(Fd, eof),
+                            erlang:send_after(?INITIAL_WAIT, self(), maybe_close),
+                            {ok, #file{fd = Fd, eof = Eof, is_sys = IsSys, pread_limit = Limit, tab=Tab}};
+                        Error ->
+                            init_status_error(ReturnPid, Ref, Error)
+                    end;
+                Error ->
+                    init_status_error(ReturnPid, Ref, Error)
+            end
     end.
 
 file_open_options(Options) ->
@@ -552,31 +533,18 @@ handle_call(close, _From, #file{fd = Fd} = File) ->
 handle_call({pread_iolist, Pos}, _From, File) ->
     update_read_timestamp(),
     {LenIolist, NextPos} = read_raw_iolist_int(File, Pos, 4),
-<<<<<<< HEAD
-    case iolist_to_binary(LenIolist) of
+    Resp = case iolist_to_binary(LenIolist) of
         % an checksum-prefixed term
         <<1:1/integer, Len:31/integer>> ->
             {ChecksumAndIoList, _} = read_raw_iolist_int(File, NextPos, Len + 16),
             {Checksum, IoList} = extract_checksum(ChecksumAndIoList),
-            {reply, {ok, IoList, Checksum}, File};
+            {ok, IoList, Checksum};
         <<0:1/integer, Len:31/integer>> ->
             {Iolist, _} = read_raw_iolist_int(File, NextPos, Len),
             {reply, {ok, Iolist, <<>>}, File}
-    end;
-=======
-    Resp = case iolist_to_binary(LenIolist) of
-    <<1:1/integer,Len:31/integer>> -> % an MD5-prefixed term
-        {Md5AndIoList, _} = read_raw_iolist_int(File, NextPos, Len+16),
-        {Md5, IoList} = extract_md5(Md5AndIoList),
-        {ok, IoList, Md5};
-    <<0:1/integer,Len:31/integer>> ->
-        {Iolist, _} = read_raw_iolist_int(File, NextPos, Len),
-        {ok, Iolist, <<>>}
     end,
     maybe_cache(File#file.tab, {Pos, Resp}),
     {reply, Resp, File};
-
->>>>>>> 897fbd607 (Add couch_file cache)
 handle_call({pread_iolists, PosL}, _From, File) ->
     update_read_timestamp(),
     LocNums1 = [{Pos, 4} || Pos <- PosL],
@@ -1024,7 +992,6 @@ reset_eof(#file{} = File) ->
     {ok, Eof} = file:position(File#file.fd, eof),
     File#file{eof = Eof}.
 
-<<<<<<< HEAD
 -spec generate_checksum(binary()) -> <<_:128>>.
 generate_checksum(Bin) when is_binary(Bin) ->
     case generate_xxhash_checksums() of
@@ -1055,12 +1022,11 @@ generate_xxhash_checksums() ->
         Val when is_boolean(Val) ->
             Val
     end.
-=======
+
 maybe_cache(undefined, _Obj) ->
     ok;
 maybe_cache(Tab, Obj) ->
     ets:insert(Tab, Obj).
->>>>>>> 897fbd607 (Add couch_file cache)
 
 -ifdef(TEST).
 -include_lib("couch/include/couch_eunit.hrl").

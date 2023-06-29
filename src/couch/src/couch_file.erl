@@ -541,7 +541,7 @@ handle_call({pread_iolist, Pos}, _From, File) ->
             {ok, IoList, Checksum};
         <<0:1/integer, Len:31/integer>> ->
             {Iolist, _} = read_raw_iolist_int(File, NextPos, Len),
-            {reply, {ok, Iolist, <<>>}, File}
+            {ok, Iolist, <<>>}
     end,
     maybe_cache(File#file.tab, {Pos, Resp}),
     {reply, Resp, File};

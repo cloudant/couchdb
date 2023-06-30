@@ -84,7 +84,6 @@
 % Database request handlers
 handle_request(#httpd{path_parts = [<<"_db">>, DbName | RestParts]=Path, method = Method} = Req0) ->
     Req = Req0#httpd{path_parts = [DbName | RestParts]},
-    io:format("IN LOCAL DB HANDLER!! -- ~p~n", [Path]),
     case {Method, RestParts} of
         {'PUT', []} ->
             create_db_req(Req, DbName);
@@ -467,7 +466,6 @@ do_db_req(#httpd{path_parts = [DbName | _], user_ctx = Ctx} = Req, Fun) ->
     Fun(Req, Db).
 
 db_req(#httpd{method = 'GET', path_parts = [DbName]} = Req, Db) ->
-    io:format("GET[~p]~n", [DbName]),
     {ok, DbInfo} = couch_db:get_db_info(Db),
     send_json(Req, {DbInfo});
 db_req(#httpd{method = 'POST', path_parts = [DbName], user_ctx = Ctx} = Req, Db) ->
@@ -546,20 +544,13 @@ db_req(#httpd{method = 'POST', path_parts = [_, <<"_bulk_docs">>], user_ctx = Ct
                 DocsArray0
         end,
     couch_stats:update_histogram([couchdb, httpd, bulk_docs], length(DocsArray)),
-    W =
-        case couch_util:get_value(<<"w">>, JsonProps) of
-            Value when is_integer(Value) ->
-                integer_to_list(Value);
-            _ ->
-                chttpd:qs_value(Req, "w", integer_to_list(mem3:quorum(Db)))
-        end,
     case chttpd:header_value(Req, "X-Couch-Full-Commit") of
         "true" ->
-            Options = [full_commit, {user_ctx, Ctx}, {w, W}];
+            Options = [full_commit, {user_ctx, Ctx}];
         "false" ->
-            Options = [delay_commit, {user_ctx, Ctx}, {w, W}];
+            Options = [delay_commit, {user_ctx, Ctx}];
         _ ->
-            Options = [{user_ctx, Ctx}, {w, W}]
+            Options = [{user_ctx, Ctx}]
     end,
     NewEdits = couch_util:get_value(<<"new_edits">>, JsonProps, true),
     Docs = lists:map(
@@ -581,7 +572,7 @@ db_req(#httpd{method = 'POST', path_parts = [_, <<"_bulk_docs">>], user_ctx = Ct
                     true -> [all_or_nothing | Options];
                     _ -> Options
                 end,
-            case fabric:update_docs(Db, Docs, Options2) of
+            case couch_db:update_docs(Db, Docs, Options2) of
                 {ok, Results} ->
                     % output the results
                     chttpd_stats:incr_writes(length(Results)),
@@ -615,7 +606,7 @@ db_req(#httpd{method = 'POST', path_parts = [_, <<"_bulk_docs">>], user_ctx = Ct
                     send_json(Req, 417, ErrorsJson)
             end;
         false ->
-            case fabric:update_docs(Db, Docs, [?REPLICATED_CHANGES | Options]) of
+            case couch_db:update_docs(Db, Docs, [?REPLICATED_CHANGES | Options]) of
                 {ok, Errors} ->
                     chttpd_stats:incr_writes(length(Docs)),
                     ErrorsJson = lists:map(fun update_doc_result_to_json/1, Errors),
@@ -909,7 +900,8 @@ all_docs_view(Req, Db, Keys, OP) ->
     Options = [{user_ctx, Req#httpd.user_ctx}],
     Max = chttpd:chunked_response_buffer_size(),
     VAcc = #vacc{db = Db, req = Req, threshold = Max},
-    {ok, Resp} = fabric:all_docs(Db, Options, fun view_cb/2, VAcc, Args4),
+    %{ok, Resp} = fabric:all_docs(Db, Options, fun view_cb/2, VAcc, Args4),
+    {ok, Resp} = couch_mrview:query_all_docs(Db, Args4, fun view_cb/2, VAcc),
     {ok, Resp#vacc.resp}.
 
 view_cb({row, Row} = Msg, Acc) ->
@@ -1072,8 +1064,7 @@ db_doc_req(#httpd{method = 'PUT', user_ctx = Ctx} = Req, Db, DocId) ->
     DbName = couch_db:name(Db),
     couch_db:validate_docid(Db, DocId),
 
-    W = chttpd:qs_value(Req, "w", integer_to_list(mem3:quorum(Db))),
-    Options = [{user_ctx, Ctx}, {w, W}],
+    Options = [{user_ctx, Ctx}],
 
     Loc = absolute_uri(Req, [
         $/,
@@ -1437,15 +1428,14 @@ send_updated_doc(Req, Db, DocId, Doc, Headers, Type) ->
 
 update_doc_req(Req, Db, DocId, Doc, Headers, UpdateType) ->
     #httpd{user_ctx = Ctx} = Req,
-    W = chttpd:qs_value(Req, "w", integer_to_list(mem3:quorum(Db))),
     Options =
         case couch_httpd:header_value(Req, "X-Couch-Full-Commit") of
             "true" ->
-                [full_commit, UpdateType, {user_ctx, Ctx}, {w, W}];
+                [full_commit, UpdateType, {user_ctx, Ctx}];
             "false" ->
-                [delay_commit, UpdateType, {user_ctx, Ctx}, {w, W}];
+                [delay_commit, UpdateType, {user_ctx, Ctx}];
             _ ->
-                [UpdateType, {user_ctx, Ctx}, {w, W}]
+                [UpdateType, {user_ctx, Ctx}]
         end,
     {Status, {etag, Etag}, Body} = update_doc(Db, DocId, Doc, Options),
     HttpCode = http_code_from_status(Status),
@@ -1464,7 +1454,7 @@ http_code_from_status(Status) ->
 
 update_doc(Db, DocId, #doc{deleted = Deleted, body = DocBody} = Doc, Options) ->
     {_, Ref} = spawn_monitor(fun() ->
-        try fabric:update_doc(Db, Doc, Options) of
+        try couch_db:update_doc(Db, Doc, Options, ?INTERACTIVE_EDIT) of
             Resp ->
                 exit({exit_ok, Resp})
         catch
@@ -1553,7 +1543,7 @@ couch_doc_open(Db, DocId, Rev, Options0) ->
     case Rev of
         % open most recent rev
         nil ->
-            case fabric:open_doc(Db, DocId, Options) of
+            case couch_db:open_doc(Db, DocId, Options) of
                 {ok, Doc} ->
                     chttpd_stats:incr_reads(),
                     Doc;

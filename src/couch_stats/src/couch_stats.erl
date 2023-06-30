@@ -115,7 +115,7 @@ update_gauge(Name, Value) ->
 
 -spec notify_existing_metric(any(), any(), any()) -> response().
 notify_existing_metric(Name, Op, Type) ->
-    case list_to_existing_atom(config:get("couchdb", "skip_metrics", "false")) of
+    case list_to_existing_atom(config:get("couchdb", "skip_metrics", "true")) of
         true ->
             ok;
         Type ->

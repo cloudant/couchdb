@@ -331,7 +331,7 @@ validate_all_docs_args(DbName, Args) when is_binary(DbName) ->
     Db = open_cluster_db(hd(Shards)),
     validate_all_docs_args(Db, Args);
 validate_all_docs_args(Db, Args) ->
-    true = couch_db:is_clustered(Db),
+    _ = couch_db:is_clustered(Db),
     couch_mrview_util:validate_all_docs_args(Db, Args).
 
 validate_args(DbName, DDoc, Args) when is_binary(DbName) ->

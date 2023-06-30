@@ -66,12 +66,5 @@ set_level(Level) ->
     config:set("log", "level", couch_log_util:level_to_string(Level)).
 
 -spec log(atom(), string(), list()) -> ok.
-log(Level, Fmt, Args) ->
-    case couch_log_util:should_log(Level) of
-        true ->
-            couch_stats:increment_counter([couch_log, level, Level]),
-            Entry = couch_log_formatter:format(Level, self(), Fmt, Args),
-            ok = couch_log_server:log(Entry);
-        false ->
-            ok
-    end.
+log(_Level, _Fmt, _Args) ->
+    ok.

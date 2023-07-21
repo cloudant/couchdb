@@ -42,14 +42,19 @@
 % Else
 %   -> save_doc
 before_doc_update(Doc, Db, _UpdateType) ->
+    io:format("IN couch_users_db BEFORE_DOC_UPDATE!! part 0~n", []),
     #user_ctx{name = Name} = couch_db:get_user_ctx(Db),
     DocName = get_doc_name(Doc),
+    io:format("IN couch_users_db BEFORE_DOC_UPDATE!! part 1~n", []),
     case (catch couch_db:check_is_admin(Db)) of
         ok ->
+            io:format("IN couch_users_db BEFORE_DOC_UPDATE!! part 2~n", []),
             save_doc(Doc);
         _ when Name =:= DocName orelse Name =:= null ->
+            io:format("IN couch_users_db BEFORE_DOC_UPDATE!! part 3~n", []),
             save_doc(Doc);
-        _ ->
+        E ->
+            io:format("IN couch_users_db BEFORE_DOC_UPDATE!! part 4: ~p~n", [E]),
             throw(not_found)
     end.
 

@@ -689,6 +689,9 @@ get_design_doc_count(#db{} = Db) ->
     FoldFun = fun(_, Acc) -> {ok, Acc + 1} end,
     fold_design_docs(Db, FoldFun, 0, []).
 
+check_can_set_security(#db{user_ctx = UserCtx} = Db) ->
+    lists:member(<<"_chassis">>, UserCtx#user_ctx.roles) orelse check_is_admin(Db).
+
 check_is_admin(#db{user_ctx = UserCtx} = Db) ->
     case is_admin(Db) of
         true ->
@@ -707,9 +710,12 @@ check_is_member(#db{user_ctx = UserCtx} = Db) ->
 is_admin(#db{user_ctx = UserCtx} = Db) ->
     case couch_db_plugin:check_is_admin(Db) of
         true ->
+            io:format("FOUND ADMIN~n", []),
             true;
         false ->
+            io:format("NO ADMIN YET~n", []),
             {Admins} = get_admins(Db),
+            io:format("GOT ADMINS: ~p~n", [Admins]),
             is_authorized(UserCtx, Admins)
     end.
 
@@ -786,7 +792,7 @@ get_security(?OLD_DB_REC = Db) ->
     {?OLD_DB_SECURITY(Db)}.
 
 set_security(#db{main_pid = Pid} = Db, {NewSecProps}) when is_list(NewSecProps) ->
-    check_is_admin(Db),
+    check_can_set_security(Db),
     ok = validate_security_object(NewSecProps),
     gen_server:call(Pid, {set_security, NewSecProps}, infinity);
 set_security(_, _) ->
@@ -946,6 +952,9 @@ validate_doc_update_int(Db, Doc, GetDiskDocFun) ->
         DiskDoc = GetDiskDocFun(),
         JsonCtx = couch_util:json_user_ctx(Db),
         SecObj = get_security(Db),
+        io:format("TRIGGERING DOC UPDATE ON ~p{~p} WITH SECOBJ ~p AND DOC ~p~n", [name(Db), mem3:dbname(name(Db)),  SecObj, Doc]),
+        io:format("TRIGGERING DOC UPDATE, DB IS: ~p~n", [Db]),
+        io:format("TRIGGERING DOC UPDATE, SEC IS: ~p~n", [fabric:get_security(mem3:dbname(name(Db)))]),
         try
             [
                 case Fun(Doc, DiskDoc, JsonCtx, SecObj) of
@@ -2018,6 +2027,7 @@ validate_dbname(DbName) when is_binary(DbName) ->
     ).
 
 validate_dbname_int(DbName, Normalized) when is_binary(DbName) ->
+    io:format("VALIDATING DBNAME INT: ~p -- ~p~n", [DbName, Normalized]),
     DbNoExt = couch_util:drop_dot_couch_ext(DbName),
     case re:run(DbNoExt, ?DBNAME_REGEX, [{capture, none}, dollar_endonly]) of
         match ->
@@ -2025,7 +2035,7 @@ validate_dbname_int(DbName, Normalized) when is_binary(DbName) ->
         nomatch ->
             case is_system_db_name(Normalized) of
                 true -> ok;
-                false -> {error, {illegal_database_name, DbName}}
+                false -> {error, {illegal_database_namezz, DbName}}
             end
     end.
 

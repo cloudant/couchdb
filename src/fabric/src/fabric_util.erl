@@ -285,7 +285,9 @@ remove_ancestors_test() ->
 is_replicator_db(DbName) ->
     path_ends_with(DbName, <<"_replicator">>).
 
-is_users_db(DbName) ->
+is_users_db(DbName) when is_list(DbName) ->
+    is_users_db(list_to_binary(DbName));
+is_users_db(DbName) when is_binary(DbName) ->
     ConfigName = list_to_binary(
         config:get(
             "chttpd_auth", "authentication_db", "_users"
@@ -308,9 +310,13 @@ open_cluster_db(#shard{dbname = DbName, opts = Options}) ->
 
 open_cluster_db(DbName, Opts) ->
     % as admin
+    io:format("OPEN_CLUSTER_DB PART 1~n", []),
     {SecProps} = fabric:get_security(DbName),
+    io:format("OPEN_CLUSTER_DB PART 2~n", []),
     UserCtx = couch_util:get_value(user_ctx, Opts, #user_ctx{}),
+    io:format("OPEN_CLUSTER_DB PART 3~n", []),
     {ok, Db} = couch_db:clustered_db(DbName, UserCtx, SecProps),
+    io:format("OPEN_CLUSTER_DB PART 4~n", []),
     Db.
 
 %% test function

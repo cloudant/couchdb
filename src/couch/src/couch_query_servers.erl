@@ -397,7 +397,6 @@ approx_count_distinct(rereduce, Reds) ->
 validate_doc_update(Db, DDoc, EditDoc, DiskDoc, Ctx, SecObj) ->
     JsonEditDoc = couch_doc:to_json_obj(EditDoc, [revs]),
     JsonDiskDoc = json_doc(DiskDoc),
-    io:format("VDU WITH CTX{~p} AND SECOBJ: ~p~n", [Ctx, SecObj]),
     Resp = ddoc_prompt(
         Db,
         DDoc,

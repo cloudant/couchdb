@@ -333,34 +333,27 @@ get_missing_revs(DbName, IdsRevs, Options) when is_list(IdsRevs) ->
 -spec update_doc(dbname(), #doc{} | json_obj(), [option()]) ->
     {ok, any()} | any().
 update_doc(DbName, Doc, Options) ->
-    io:format("UPDATING DOC[~p]: ~p~n", [DbName, Doc]),
-    Resp = case update_docs(DbName, [Doc], opts(Options)) of
+    case update_docs(DbName, [Doc], opts(Options)) of
         {ok, [{ok, NewRev}]} ->
             {ok, NewRev};
         {accepted, [{accepted, NewRev}]} ->
             {accepted, NewRev};
         {ok, [{{_Id, _Rev}, Error}]} ->
-            io:format("UPDATE DOC ERROR: ~p~n", [Error]),
             throw(Error);
         {ok, [Error]} ->
-            io:format("UPDATE DOC ERROR: ~p~n", [Error]),
             throw(Error);
         {ok, []} ->
             % replication success
             #doc{revs = {Pos, [RevId | _]}} = doc(DbName, Doc),
             {ok, {Pos, RevId}};
         {error, [Error]} ->
-            io:format("UPDATE DOC ERROR: ~p~n", [Error]),
             throw(Error)
-    end,
-    io:format("UPDATE DOC RESP: ~p~n", [Resp]),
-    Resp.
+    end.
 
 %% @doc update a list of docs
 -spec update_docs(dbname(), [#doc{} | json_obj()], [option()]) ->
     {ok, any()} | any().
 update_docs(DbName, Docs0, Options) ->
-    io:format("IN PLURAL UPDATE DOCS WITH ~p =?= ~p~n", [DbName, dbname(DbName)]),
     try
         Docs1 = docs(DbName, Docs0),
         fabric_doc_update:go(dbname(DbName), Docs1, opts(Options))
@@ -372,7 +365,6 @@ update_docs(DbName, Docs0, Options) ->
         {error, Error} ->
             {error, Error};
         Error ->
-            io:format("GOT ERROR: ~p~n", [Error]),
             throw(Error)
     catch
         {aborted, PreCommitFailures} ->

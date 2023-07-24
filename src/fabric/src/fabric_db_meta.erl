@@ -74,9 +74,7 @@ handle_purge_message(Error, _, _Acc) ->
     {error, Error}.
 
 set_security(DbName, SecObj, Options) ->
-    io:format("SETTING SECURITY~n", []),
     Shards = mem3:shards(DbName),
-    io:format("SETTING SECURITY SHARDS: ~p~n", [Shards]),
     RexiMon = fabric_util:create_monitors(Shards),
     Workers = fabric_util:submit_jobs(Shards, set_security, [SecObj, Options]),
     Handler = fun handle_set_message/3,
@@ -101,22 +99,18 @@ set_security(DbName, SecObj, Options) ->
     end.
 
 handle_set_message({rexi_DOWN, _, {_, Node}, _}, _, #acc{workers = Wrkrs} = Acc) ->
-    io:format("HANDLE_SET_MESSAGE PART 1~n", []),
     RemWorkers = lists:filter(fun(S) -> S#shard.node =/= Node end, Wrkrs),
     maybe_finish_set(Acc#acc{workers = RemWorkers});
 handle_set_message(ok, W, Acc) ->
-    io:format("HANDLE_SET_MESSAGE PART 2~n", []),
     NewAcc = Acc#acc{
         workers = (Acc#acc.workers -- [W]),
         finished = [W | Acc#acc.finished]
     },
     maybe_finish_set(NewAcc);
 handle_set_message({rexi_EXIT, {maintenance_mode, _}}, W, Acc) ->
-    io:format("HANDLE_SET_MESSAGE PART 3~n", []),
     NewAcc = Acc#acc{workers = (Acc#acc.workers -- [W])},
     maybe_finish_set(NewAcc);
 handle_set_message(Error, W, Acc) ->
-    io:format("HANDLE_SET_MESSAGE PART 4~n", []),
     Dst = {W#shard.node, W#shard.name},
     couch_log:error("Failed to set security object on ~p :: ~p", [Dst, Error]),
     NewAcc = Acc#acc{workers = (Acc#acc.workers -- [W])},
@@ -135,7 +129,6 @@ check_sec_set(NumWorkers, SetWorkers) ->
         check_sec_set_int(NumWorkers, SetWorkers)
     catch
         throw:Reason ->
-            io:format("RETURNING CHECK_SEC_SET ERROR: ~p~n", [Reason]),
             {error, Reason}
     end.
 

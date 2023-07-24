@@ -20,9 +20,7 @@
 go(_, [], _) ->
     {ok, []};
 go(DbName, AllDocs0, Opts) ->
-    io:format("IN FABRIC_DOC_UPDATE:GO PART 1~n", []),
     AllDocs1 = before_doc_update(DbName, AllDocs0, Opts),
-    io:format("IN FABRIC_DOC_UPDATE:GO PART 2~n", []),
     AllDocs = tag_docs(AllDocs1),
     validate_atomic_update(DbName, AllDocs, lists:member(all_or_nothing, Opts)),
     Options = lists:delete(all_or_nothing, Opts),
@@ -34,22 +32,18 @@ go(DbName, AllDocs0, Opts) ->
         end,
         group_docs_by_shard(DbName, AllDocs)
     ),
-    io:format("IN FABRIC_DOC_UPDATE:GO PART 3~n", []),
     {Workers, _} = lists:unzip(GroupedDocs),
     RexiMon = fabric_util:create_monitors(Workers),
     W = couch_util:get_value(w, Options, integer_to_list(mem3:quorum(DbName))),
     Acc0 = {length(Workers), length(AllDocs), list_to_integer(W), GroupedDocs, dict:new()},
     Timeout = fabric_util:request_timeout(),
-    io:format("IN FABRIC_DOC_UPDATE:GO PART 4~n", []),
     {Workers, _} = lists:unzip(GroupedDocs),
     try rexi_utils:recv(Workers, #shard.ref, fun handle_message/3, Acc0, infinity, Timeout) of
         {ok, {Health, Results}} when
             Health =:= ok; Health =:= accepted; Health =:= error
         ->
-            io:format("IN FABRIC_DOC_UPDATE:GO PART 5~n", []),
             ensure_all_responses(Health, AllDocs, Results);
         {timeout, Acc} ->
-            io:format("IN FABRIC_DOC_UPDATE:GO PART 6~n", []),
             {_, _, W1, GroupedDocs1, DocReplDict} = Acc,
             {DefunctWorkers, _} = lists:unzip(GroupedDocs1),
             fabric_util:log_timeout(DefunctWorkers, "update_docs"),
@@ -60,7 +54,6 @@ go(DbName, AllDocs0, Opts) ->
             ),
             ensure_all_responses(Health, AllDocs, Resp);
         Else ->
-            io:format("IN FABRIC_DOC_UPDATE:GO PART 7~n", []),
             Else
     after
         rexi_monitor:stop(RexiMon)
@@ -123,7 +116,6 @@ handle_message({forbidden, Msg}, _, _) ->
 handle_message({request_entity_too_large, Entity}, _, _) ->
     throw({request_entity_too_large, Entity});
 handle_message(Msg, _, _) ->
-    io:format("FABRIC_DOC_UPDATE:HANDLE_MESSAGE: ~p~n", [Msg]),
     throw({unknown, Msg}).
 
 before_doc_update(DbName, Docs, Opts) ->
@@ -137,10 +129,8 @@ before_doc_update(DbName, Docs, Opts) ->
             _ ->
                 ?INTERACTIVE_EDIT
         end,
-    io:format("IN BEFORE_DOC_UPDATE!! part 1~n", []),
     case {fabric_util:is_replicator_db(DbName), fabric_util:is_users_db(DbName)} of
         {true, _} ->
-            io:format("IN BEFORE_DOC_UPDATE!! part 2~n", []),
             %% cluster db is expensive to create so we only do it if we have to
             Db = fabric_util:open_cluster_db(DbName, Opts),
             [
@@ -148,16 +138,13 @@ before_doc_update(DbName, Docs, Opts) ->
              || Doc <- Docs
             ];
         {_, true} ->
-            io:format("IN BEFORE_DOC_UPDATE!! part 3~n", []),
             %% cluster db is expensive to create so we only do it if we have to
             Db = fabric_util:open_cluster_db(DbName, Opts),
-            io:format("IN BEFORE_DOC_UPDATE!! part 3.b~n", []),
             [
                 couch_users_db:before_doc_update(Doc, Db, UpdateType)
              || Doc <- Docs
             ];
         _ ->
-            io:format("IN BEFORE_DOC_UPDATE!! part 4~n", []),
             Docs
     end.
 

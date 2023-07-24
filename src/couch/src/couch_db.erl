@@ -710,12 +710,9 @@ check_is_member(#db{user_ctx = UserCtx} = Db) ->
 is_admin(#db{user_ctx = UserCtx} = Db) ->
     case couch_db_plugin:check_is_admin(Db) of
         true ->
-            io:format("FOUND ADMIN~n", []),
             true;
         false ->
-            io:format("NO ADMIN YET~n", []),
             {Admins} = get_admins(Db),
-            io:format("GOT ADMINS: ~p~n", [Admins]),
             is_authorized(UserCtx, Admins)
     end.
 
@@ -952,9 +949,6 @@ validate_doc_update_int(Db, Doc, GetDiskDocFun) ->
         DiskDoc = GetDiskDocFun(),
         JsonCtx = couch_util:json_user_ctx(Db),
         SecObj = get_security(Db),
-        io:format("TRIGGERING DOC UPDATE ON ~p{~p} WITH SECOBJ ~p AND DOC ~p~n", [name(Db), mem3:dbname(name(Db)),  SecObj, Doc]),
-        io:format("TRIGGERING DOC UPDATE, DB IS: ~p~n", [Db]),
-        io:format("TRIGGERING DOC UPDATE, SEC IS: ~p~n", [fabric:get_security(mem3:dbname(name(Db)))]),
         try
             [
                 case Fun(Doc, DiskDoc, JsonCtx, SecObj) of
@@ -2027,7 +2021,6 @@ validate_dbname(DbName) when is_binary(DbName) ->
     ).
 
 validate_dbname_int(DbName, Normalized) when is_binary(DbName) ->
-    io:format("VALIDATING DBNAME INT: ~p -- ~p~n", [DbName, Normalized]),
     DbNoExt = couch_util:drop_dot_couch_ext(DbName),
     case re:run(DbNoExt, ?DBNAME_REGEX, [{capture, none}, dollar_endonly]) of
         match ->

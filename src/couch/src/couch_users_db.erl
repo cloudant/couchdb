@@ -49,7 +49,7 @@ before_doc_update(Doc, Db, _UpdateType) ->
             save_doc(Doc);
         _ when Name =:= DocName orelse Name =:= null ->
             save_doc(Doc);
-        E ->
+        _ ->
             throw(not_found)
     end.
 

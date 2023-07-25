@@ -629,7 +629,7 @@ dbname(Db) ->
         couch_db:name(Db)
     catch
         error:badarg ->
-            erlang:error({illegal_database_namett, Db})
+            erlang:error({illegal_database_name, Db})
     end.
 
 %% @doc get db shard uuids

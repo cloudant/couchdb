@@ -2028,7 +2028,7 @@ validate_dbname_int(DbName, Normalized) when is_binary(DbName) ->
         nomatch ->
             case is_system_db_name(Normalized) of
                 true -> ok;
-                false -> {error, {illegal_database_namezz, DbName}}
+                false -> {error, {illegal_database_name, DbName}}
             end
     end.
 

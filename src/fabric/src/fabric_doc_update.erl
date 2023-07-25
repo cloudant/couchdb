@@ -37,7 +37,6 @@ go(DbName, AllDocs0, Opts) ->
     W = couch_util:get_value(w, Options, integer_to_list(mem3:quorum(DbName))),
     Acc0 = {length(Workers), length(AllDocs), list_to_integer(W), GroupedDocs, dict:new()},
     Timeout = fabric_util:request_timeout(),
-    {Workers, _} = lists:unzip(GroupedDocs),
     try rexi_utils:recv(Workers, #shard.ref, fun handle_message/3, Acc0, infinity, Timeout) of
         {ok, {Health, Results}} when
             Health =:= ok; Health =:= accepted; Health =:= error
@@ -114,9 +113,7 @@ handle_message({bad_request, Msg}, _, _) ->
 handle_message({forbidden, Msg}, _, _) ->
     throw({forbidden, Msg});
 handle_message({request_entity_too_large, Entity}, _, _) ->
-    throw({request_entity_too_large, Entity});
-handle_message(Msg, _, _) ->
-    throw({unknown, Msg}).
+    throw({request_entity_too_large, Entity}).
 
 before_doc_update(DbName, Docs, Opts) ->
     % Use the same pattern as in couch_db:validate_doc_update/3. If the document was already

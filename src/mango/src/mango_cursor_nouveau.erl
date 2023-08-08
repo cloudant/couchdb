@@ -102,7 +102,7 @@ execute(Cursor, UserFun, UserAcc) ->
         user_fun = UserFun,
         user_acc = UserAcc,
         fields = Cursor#cursor.fields,
-        execution_stats = mango_execution_stats:log_start(Stats)
+        execution_stats = mango_execution_stats:log_start(Db, Stats)
     },
     try
         case Query of

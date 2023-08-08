@@ -20,7 +20,7 @@
     incr_docs_examined/2,
     incr_quorum_docs_examined/1,
     incr_results_returned/1,
-    log_start/1,
+    log_start/2,
     log_end/1,
     log_stats/1,
     maybe_add_stats/4,
@@ -77,8 +77,9 @@ incr_results_returned(Stats) ->
         resultsReturned = Stats#execution_stats.resultsReturned + 1
     }.
 
-log_start(Stats) ->
+log_start(Db, Stats) ->
     Stats#execution_stats{
+        db = Db,
         executionStartTime = os:timestamp()
     }.
 
@@ -92,9 +93,14 @@ log_end(Stats) ->
 maybe_add_stats(Opts, UserFun, Stats0, UserAcc) ->
     Stats1 = log_end(Stats0),
     couch_stats:update_histogram([mango, query_time], Stats1#execution_stats.executionTimeMs),
-    %% TODO: add rows read when we collect the stats
-    %% TODO: add docs vs quorum docs
-    chttpd_stats:incr_reads(Stats1#execution_stats.totalDocsExamined),
+
+    case couch_flags:is_enabled(chttpd_stats_from_mango_shard_execution_stats, Stats0#execution_stats.db) of
+        false -> ok;
+        true ->
+            %% TODO: add rows read when we collect the stats
+            %% TODO: add docs vs quorum docs
+            chttpd_stats:incr_reads(Stats1#execution_stats.totalDocsExamined)
+    end,
 
     FinalAcc =
         case couch_util:get_value(execution_stats, Opts) of

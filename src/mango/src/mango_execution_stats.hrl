@@ -11,6 +11,7 @@
 % the License.
 
 -record(execution_stats, {
+    db,
     totalKeysExamined = 0,
     totalDocsExamined = 0,
     totalQuorumDocsExamined = 0,

@@ -1983,6 +1983,7 @@ increment_stat(#db{options = Options}, Stat, Count) when
 ->
     case lists:member(sys_db, Options) of
         true ->
+            %% TODO: we shouldn't leak resource usage just because it's a sys_db
             ok;
         false ->
             couch_stats:increment_counter(Stat, Count)

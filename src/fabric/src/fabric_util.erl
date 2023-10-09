@@ -138,7 +138,8 @@ get_shard([#shard{node = Node, name = Name} | Rest], Opts, Timeout, Factor) ->
     try
         receive
             {Ref, {ok, Db}, {cost, Cost}} ->
-                couch_cost:accumulate_costs(Cost),
+                io:format("[~p]GET SHARD GOT COST: ~p~n", [self(), Cost]),
+                %%couch_cost:accumulate_costs(Cost),
                 {ok, Db};
             {Ref, {'rexi_EXIT', {{unauthorized, _} = Error, _}}} ->
                 throw(Error);

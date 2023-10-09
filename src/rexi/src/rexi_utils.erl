@@ -85,7 +85,7 @@ process_message(RefList, Keypos, Fun, Acc0, TimeoutRef, PerMsgTO) ->
             {ok, Acc0};
         {Ref, Msg, {cost,Cost}} ->
             io:format("[~p]GOT COST: ~p -- ~p~n", [self(), Cost, Msg]),
-            couch_cost:accumulate_costs(Cost),
+            %%couch_cost:accumulate_costs(Cost),
             case lists:keyfind(Ref, Keypos, RefList) of
             false ->
                 % this was some non-matching message which we will ignore
@@ -96,7 +96,7 @@ process_message(RefList, Keypos, Fun, Acc0, TimeoutRef, PerMsgTO) ->
         {Ref, From, Msg, {cost,Cost}} ->
             %%io:format("GOT COST: ~p~n", [Cost]),
             io:format("[~p]GOT COST: ~p -- ~p~n", [self(), Cost, Msg]),
-            couch_cost:accumulate_costs(Cost),
+            %%couch_cost:accumulate_costs(Cost),
             case lists:keyfind(Ref, Keypos, RefList) of
             false ->
                 {ok, Acc0};

@@ -29,6 +29,12 @@
     update_gauge/2
 ]).
 
+%% couch_stats_resource_tracker API
+-export([
+    create_context/3,
+    maybe_track_rexi_init_p/1
+]).
+
 -include("couch_stats.hrl").
 
 -type response() :: ok | {error, unknown_metric}.
@@ -116,6 +122,11 @@ update_gauge(Name, Value) ->
 -spec notify_existing_metric(any(), any(), any()) -> response().
 notify_existing_metric(Name, Op, Type) ->
     try
+        %% Should maybe_track_local happen before or after notify?
+        %% If after, only currently tracked metrics declared in the app's
+        %% stats_description.cfg will be trackable locally. Pros/cons.
+        %io:format("NOTIFY_EXISTING_METRIC: ~p || ~p || ~p~n", [Name, Op, Type]),
+        ok = maybe_track_local(Name, Op, Type),
         ok = folsom_metrics:notify_existing_metric(Name, Op, Type)
     catch
         _:_ ->
@@ -128,3 +139,22 @@ sample_type(Name, histogram) ->
     folsom_metrics:get_histogram_statistics(Name);
 sample_type(Name, _) ->
     folsom_metrics:get_metric_value(Name).
+
+%% Only potentially track positive increments to counters
+-spec maybe_track_local(any(), any(), any()) -> ok.
+maybe_track_local(Name, {inc, Val}, counter) when is_integer(Val) andalso Val > 0 ->
+    %%io:format("maybe_track_local[~p]: ~p~n", [Val, Name]),
+    couch_stats_resource_tracker:maybe_inc(Name, Val),
+    ok;
+maybe_track_local(_, _, _) ->
+    ok.
+
+create_context(From, MFA, Nonce) ->
+    couch_stats_resource_tracker:create_context(From, MFA, Nonce).
+
+maybe_track_rexi_init_p({M, F, _A}) ->
+    Metric = [M, F, spawned],
+    case couch_stats_resource_tracker:should_track(Metric) of
+        true -> increment_counter(Metric);
+        false -> ok
+    end.

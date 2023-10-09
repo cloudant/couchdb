@@ -51,6 +51,7 @@ normalize(Selector) ->
 % Returns true or false.
 match(Selector, D) ->
     couch_stats:increment_counter([mango, evaluate_selector]),
+    couch_cost:inc_mango_eval_match(),
     match_int(Selector, D).
 
 % An empty selector matches any value.

@@ -68,7 +68,6 @@
 ]).
 
 -include_lib("couch/include/couch_db.hrl").
--include("couch_stats.hrl").
 
 %% Use these for record upgrades over the wire and in ETS tables
 %% TODO: alternatively, just delete these. Currently using a map

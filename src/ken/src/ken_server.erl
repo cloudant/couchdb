@@ -606,6 +606,8 @@ prune_worker_table(State) ->
     State#state{pruned_last = erlang:monotonic_time()}.
 
 allowed_languages() ->
+    % These are always available
+    BuiltIn = [<<"javascript">>, <<"javascript_quickjs">>, <<"query">>],
     Config =
         couch_proc_manager:get_servers_from_env("COUCHDB_QUERY_SERVER_") ++
             couch_proc_manager:get_servers_from_env("COUCHDB_NATIVE_QUERY_SERVER_"),
@@ -615,7 +617,7 @@ allowed_languages() ->
             true -> [<<"erlang">> | Allowed0];
             _Else -> Allowed0
         end,
-    [<<"query">> | Allowed].
+    lists:usort(BuiltIn ++ Allowed).
 
 config(Key, Default) ->
     config:get("ken", Key, Default).
